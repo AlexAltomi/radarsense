@@ -32,9 +32,10 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
   outer members are ZIP_DEFLATED.
 - Train composition: user1 = 57% of nominal train recordings; balance per user at training time; the cache keeps everything.
 - Label values {0,1,2,3,6,7}; 0 = no gesture.
-  Every recording has exactly one contiguous gesture; labelled span is 8 frames (users 1-8) or 10 frames (users 9, 11),
-  derived from inventory label counts assuming 200 recordings per class; measured directly for user4 (8) and user9 (10).
-  No gesture-free recordings: 'no gesture' comes from frames outside the labelled span.
+- Gesture structure: verified per recording for user4_e1 (8-frame span) and user9_e1 (10-frame span): exactly one
+  contiguous gesture per recording, no gesture-free recordings. For other nominal files, spans of 8 (users 1-8) or 10
+  (users 9, 11) are inferred from inventory label counts assuming 200 recordings per class; anomalous files differ
+  (user1/2/9 anomalous = 10, user6 slow/wrist mixed). The cache builder verifies this per recording.
 - Label → gesture name mapping: **UNVERIFIED** (to be inferred in Week 2 from train users; update this line).
 - Antenna pair assignment (horizontal / vertical): **UNVERIFIED** (to be inferred in Week 2; update this line).
 
@@ -45,13 +46,15 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
   stored in `dsp/radarsense_dsp/constants.json`), scale 0–1, store float16.
   Processed frame layout: `[channel, range, Doppler]` = (3, 32, 32); the ch1/ch2 weight is the scaled ch0.
 - Processed cache: `data/processed/<stem>.npy` float16 (N,100,3,32,32), targets int8, `index.json`; resumable
-  (write `.partial`, rename when complete, skip finished files).
+  (write `.partial`, rename when complete, skip finished files). `build_cache.py` (not built yet) must, per
+  recording, assert exactly one contiguous gesture span; record per-file span-length histogram and violation count in
+  `index.json`; and fail with a clear message on any violation.
 - Wire format to the app: 3×32×32 uint8 frames; binary frame = 16-byte header (uint32 seq, uint64 server ms,
   uint8 true label or 255, 3 reserved) + 3,072 bytes = 3,088 bytes.
 - Detector: infer every 4 frames; accept when last 2 predictions agree with conf ≥ 0.8; 600 ms cooldown;
   re-arm after one "no gesture". Inference never on the Android main thread.
-- Window labelling (Week 3, [tune]): gesture if the window contains >=75% of the labelled span; windows with partial
-  overlap are excluded from training, never labelled no-gesture. Background/false-trigger frames must be >=10 frames
+- Window labelling (Week 3, [tune]): gesture if the window contains >=75% of that recording's own labelled span (from
+  its targets, never a per-user constant); windows with partial overlap are excluded from training, never labelled no-gesture. Background/false-trigger frames must be >=10 frames
   from any labelled span.
 
 ## Repo layout
