@@ -31,6 +31,23 @@ def _check_pair(pair: tuple[int, int], name: str) -> tuple[int, int]:
     return a, b
 
 
+def range_doppler_spectra(raw: np.ndarray) -> np.ndarray:
+    """Complex range-Doppler spectra (..., 3, range, Doppler) from raw frames (..., 3, 32, 64)."""
+    x = np.asarray(raw, dtype=np.float32)
+    if x.shape[-3:] != _RAW_SHAPE:
+        raise ValueError(f"expected (..., {_RAW_SHAPE}) frames, got {x.shape}")
+    x = x - x.mean(axis=-1, keepdims=True)  # per-chirp DC removal
+    r = np.fft.fft(x * _HANN_SAMPLE, axis=-1)[..., :N_RANGE]  # (..., ant, chirp, range)
+    r = r - r.mean(axis=-2, keepdims=True)  # clutter: mean over chirps per range bin
+    d = np.fft.fftshift(np.fft.fft(r * _HANN_CHIRP, axis=-2), axes=-2)  # (..., ant, doppler, range)
+    return np.swapaxes(d, -1, -2)  # (..., ant, range, doppler)
+
+
+def magnitude_db(spectra: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    """Raw (unclipped) magnitude in dB averaged over the antennas: (..., range, Doppler)."""
+    return (20 * np.log10(np.abs(spectra) + eps)).mean(axis=-3)
+
+
 def process_frames(
     raw: np.ndarray,
     db_min: float,
@@ -44,22 +61,14 @@ def process_frames(
         raise ValueError(f"need db_min < db_max, got {db_min}, {db_max}")
     ha, hb = _check_pair(h_pair, "h_pair")
     va, vb = _check_pair(v_pair, "v_pair")
-    x = np.asarray(raw, dtype=np.float32)
-    if x.shape[-3:] != _RAW_SHAPE:
-        raise ValueError(f"expected (..., {_RAW_SHAPE}) frames, got {x.shape}")
+    d = range_doppler_spectra(raw)
 
-    x = x - x.mean(axis=-1, keepdims=True)  # per-chirp DC removal
-    r = np.fft.fft(x * _HANN_SAMPLE, axis=-1)[..., :N_RANGE]  # (..., ant, chirp, range)
-    r = r - r.mean(axis=-2, keepdims=True)  # clutter: mean over chirps per range bin
-    d = np.fft.fftshift(np.fft.fft(r * _HANN_CHIRP, axis=-2), axes=-2)  # (..., ant, doppler, range)
-    d = np.swapaxes(d, -1, -2)  # (..., ant, range, doppler)
-
-    db = (20 * np.log10(np.abs(d) + eps)).mean(axis=-3)
+    db = magnitude_db(d, eps)
     ch0 = np.clip((db - db_min) / (db_max - db_min), 0.0, 1.0)
 
     def phase(a: int, b: int) -> np.ndarray:
         z = d[..., b, :, :] * np.conj(d[..., a, :, :])
-        return z.imag / (np.abs(z) + eps)
+        return np.imag(z) / (np.abs(z) + eps)
 
     out = np.stack([ch0, ch0 * phase(ha, hb), ch0 * phase(va, vb)], axis=-3)
     return out.astype(np.float16)

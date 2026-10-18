@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from radarsense_dsp.frames import process_frames
+from radarsense_dsp.frames import magnitude_db, process_frames, range_doppler_spectra
 
 # A unit-amplitude tone peaks at |X| of about 244 (47.75 dB) after both windowed FFTs.
 DB_MIN, DB_MAX = 0.0, 60.0  # peak stays unclipped, so argmax is unambiguous
@@ -55,6 +55,24 @@ def test_phase_channels_are_weighted_by_scaled_ch0():
     w = 20 * np.log10(peak_mag) / (DB_MAX - DB_MIN)
     assert out[0][10, 19] == pytest.approx(w, abs=ATOL)
     assert out[1][10, 19] == pytest.approx(w * np.sin(0.5), abs=ATOL)
+
+
+def test_spectra_phase_sign_and_shape():
+    s = range_doppler_spectra(tone(10, 3, phi=(0.0, 0.5, -0.25)))
+    assert s.shape == (3, 32, 32) and np.iscomplexobj(s)
+    peak = (10, 19)
+    # delta_phi = angle(ant_b) - angle(ant_a)
+    assert np.angle(s[1][peak] * np.conj(s[0][peak])) == pytest.approx(0.5, abs=1e-3)
+    assert np.angle(s[2][peak] * np.conj(s[0][peak])) == pytest.approx(-0.25, abs=1e-3)
+
+
+def test_magnitude_db_peak_and_batch_shape():
+    peak_mag = 0.5 * np.hanning(64).sum() * np.hanning(32).sum()
+    db = magnitude_db(range_doppler_spectra(np.stack([tone(10, 3), tone(5, -2)])))
+    assert db.shape == (2, 32, 32)
+    assert np.unravel_index(np.argmax(db[0]), (32, 32)) == (10, 19)
+    assert db[0][10, 19] == pytest.approx(20 * np.log10(peak_mag), abs=1e-2)
+    assert np.unravel_index(np.argmax(db[1]), (32, 32)) == (5, 16 - 2)
 
 
 def test_shape_dtype_and_ranges():
