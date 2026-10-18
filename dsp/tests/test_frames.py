@@ -6,7 +6,7 @@ from radarsense_dsp.frames import magnitude_db, process_frames, range_doppler_sp
 # A unit-amplitude tone peaks at |X| of about 244 (47.75 dB) after both windowed FFTs.
 DB_MIN, DB_MAX = 0.0, 60.0  # peak stays unclipped, so argmax is unambiguous
 DB_CLIP_MIN, DB_CLIP_MAX = 0.0, 40.0  # peak clipped to 1, so the phase weight is exactly 1
-H_PAIR, V_PAIR = (0, 1), (0, 2)
+PAIR_A, PAIR_B = (0, 1), (0, 2)
 ATOL = 2e-3  # a few float16 ulps for values in [0.5, 1]
 
 
@@ -18,7 +18,7 @@ def tone(k, d, phi=(0.0, 0.0, 0.0), amp=1.0):
 
 
 def run(raw, db_min=DB_MIN, db_max=DB_MAX):
-    return process_frames(raw, db_min, db_max, H_PAIR, V_PAIR)
+    return process_frames(raw, db_min, db_max, PAIR_A, PAIR_B)
 
 
 def test_peak_lands_at_range_and_doppler_bin():
@@ -97,10 +97,10 @@ def test_batch_equals_frame_by_frame():
 
 
 @pytest.mark.parametrize(
-    "db_min, db_max, h, v",
+    "db_min, db_max, pair_a, pair_b",
     [(10.0, 10.0, (0, 1), (0, 2)), (10.0, 5.0, (0, 1), (0, 2)), (0.0, 60.0, (1, 1), (0, 2)),
      (0.0, 60.0, (0, 1), (0, 3))],
 )
-def test_bad_arguments_raise(db_min, db_max, h, v):
+def test_bad_arguments_raise(db_min, db_max, pair_a, pair_b):
     with pytest.raises(ValueError):
-        process_frames(tone(10, 3), db_min, db_max, h, v)
+        process_frames(tone(10, 3), db_min, db_max, pair_a, pair_b)

@@ -3,9 +3,9 @@
 Input is a raw real ADC frame (3 antennas, 32 chirps, 64 samples); leading batch dimensions are allowed.
 Output layout is [channel, range, Doppler] = (3, 32, 32), float16:
   ch0  magnitude in dB averaged over the 3 antennas, clipped to [db_min, db_max] and scaled to 0..1
-  ch1  sin(delta_phi) of pair (0,2) ('axis A', labels 2/3; the h_pair argument), weighted by ch0
+  ch1  sin(delta_phi) of pair (0,2) ('axis A', labels 2/3; the pair_a argument), weighted by ch0
        (the scaled magnitude, so empty cells give 0)
-  ch2  sin(delta_phi) of pair (1,2) ('axis B', labels 6/7; the v_pair argument), weighted by ch0
+  ch2  sin(delta_phi) of pair (1,2) ('axis B', labels 6/7; the pair_b argument), weighted by ch0
 
 Conventions:
   delta_phi = angle(ant_b) - angle(ant_a) for a pair (a, b), taken per range-Doppler cell.
@@ -56,15 +56,15 @@ def process_frames(
     raw: np.ndarray,
     db_min: float,
     db_max: float,
-    h_pair: tuple[int, int],
-    v_pair: tuple[int, int],
+    pair_a: tuple[int, int],
+    pair_b: tuple[int, int],
     eps: float = 1e-12,
 ) -> np.ndarray:
     """Process raw frames (..., 3, 32, 64) into float16 images (..., 3, 32, 32)."""
     if not db_min < db_max:
         raise ValueError(f"need db_min < db_max, got {db_min}, {db_max}")
-    ha, hb = _check_pair(h_pair, "h_pair")
-    va, vb = _check_pair(v_pair, "v_pair")
+    a0, a1 = _check_pair(pair_a, "pair_a")
+    b0, b1 = _check_pair(pair_b, "pair_b")
     d = range_doppler_spectra(raw)
 
     db = magnitude_db(d, eps)
@@ -74,5 +74,5 @@ def process_frames(
         z = d[..., b, :, :] * np.conj(d[..., a, :, :])
         return np.imag(z) / (np.abs(z) + eps)
 
-    out = np.stack([ch0, ch0 * phase(ha, hb), ch0 * phase(va, vb)], axis=-3)
+    out = np.stack([ch0, ch0 * phase(a0, a1), ch0 * phase(b0, b1)], axis=-3)
     return out.astype(np.float16)
