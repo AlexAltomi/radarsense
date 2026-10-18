@@ -67,3 +67,42 @@ Counts only. Gesture = any non-zero label. Start frame, span and runs cover reco
 - gesture span, last - first + 1 (`frames:recordings`): 10:1000
 - contiguous runs of labelled frames per recording (`runs:recordings`): 1:1000
 - contiguous (single run): 1000 of 1000 recordings with a gesture
+
+## Label/antenna inference (exploratory)
+
+Train users user2, user4, user9, user11, e1 nominal; up to 40 recordings per label, frames aligned to the labelled span start. Strongest cell of the unclipped dB map; Doppler is the signed bin (bin - 16), energy-weighted over cells within 20 dB of the peak. Figure: `training/figures/label_antenna_inference.png`. Percentiles are for orientation, not constants. CAUTION: in the figure the phase change happens after the labelled span start for user2/user4 but before it for user9/user11, so the slope tables (taken over the labelled span) are not comparable between these two groups.
+
+- user2_e1: read 219 recordings, kept per label `1:40 2:40 3:40 6:40 7:40`, skipped 0; raw dB 1st/99.5th percentile 13.9/52.3
+- user4_e1: read 230 recordings, kept per label `1:40 2:40 3:40 6:40 7:40`, skipped 0; raw dB 1st/99.5th percentile 14.0/53.7
+- user9_e1: read 226 recordings, kept per label `1:40 2:40 3:40 6:40 7:40`, skipped 0; raw dB 1st/99.5th percentile 13.9/51.5
+- user11_e1: read 246 recordings, kept per label `1:40 2:40 3:40 6:40 7:40`, skipped 0; raw dB 1st/99.5th percentile 13.9/48.9
+
+Mean slope of delta_phi = angle(ant1) - angle(ant0) over the labelled span, rad/frame (share of recordings with positive slope):
+
+| label | user2 | user4 | user9 | user11 | all |
+|---|---|---|---|---|---|
+| 1 | +0.201 (95%) | +0.039 (78%) | -0.200 (0%) | -0.108 (0%) | -0.017 (43%) |
+| 2 | +0.417 (100%) | +0.617 (100%) | -0.120 (5%) | -0.111 (18%) | +0.201 (56%) |
+| 3 | -0.308 (0%) | -0.156 (20%) | -0.083 (8%) | -0.111 (8%) | -0.165 (9%) |
+| 6 | +0.444 (100%) | +0.576 (95%) | -0.061 (15%) | -0.120 (10%) | +0.210 (55%) |
+| 7 | -0.459 (0%) | -0.494 (8%) | -0.010 (40%) | -0.030 (25%) | -0.248 (18%) |
+
+Mean slope of delta_phi = angle(ant2) - angle(ant0) over the labelled span, rad/frame (share of recordings with positive slope):
+
+| label | user2 | user4 | user9 | user11 | all |
+|---|---|---|---|---|---|
+| 1 | -0.001 (68%) | +0.027 (68%) | -0.093 (2%) | -0.059 (10%) | -0.031 (37%) |
+| 2 | +0.376 (100%) | +0.559 (100%) | -0.028 (35%) | -0.014 (35%) | +0.223 (68%) |
+| 3 | -0.406 (0%) | -0.338 (0%) | -0.066 (10%) | -0.092 (5%) | -0.226 (4%) |
+| 6 | +0.122 (98%) | +0.142 (100%) | -0.027 (8%) | -0.048 (12%) | +0.047 (54%) |
+| 7 | -0.130 (2%) | -0.098 (5%) | -0.034 (10%) | -0.008 (40%) | -0.067 (14%) |
+
+Mean slope of delta_phi = angle(ant2) - angle(ant1) over the labelled span, rad/frame (share of recordings with positive slope):
+
+| label | user2 | user4 | user9 | user11 | all |
+|---|---|---|---|---|---|
+| 1 | -0.102 (10%) | -0.107 (20%) | +0.121 (95%) | +0.049 (92%) | -0.010 (54%) |
+| 2 | -0.041 (18%) | -0.058 (18%) | +0.092 (98%) | +0.082 (90%) | +0.019 (56%) |
+| 3 | -0.098 (0%) | -0.183 (2%) | +0.018 (75%) | +0.039 (82%) | -0.056 (40%) |
+| 6 | -0.322 (0%) | -0.458 (0%) | +0.034 (75%) | +0.073 (82%) | -0.168 (39%) |
+| 7 | +0.329 (100%) | +0.409 (95%) | -0.024 (20%) | +0.022 (72%) | +0.184 (72%) |
