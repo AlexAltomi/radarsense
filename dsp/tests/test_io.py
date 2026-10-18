@@ -3,7 +3,13 @@ import zipfile
 import numpy as np
 import pytest
 
-from radarsense_dsp.io import Member, iter_recordings, list_members, parse_member
+from radarsense_dsp.io import (
+    Member,
+    iter_recordings,
+    list_members,
+    parse_member,
+    read_meta,
+)
 
 N_REC = 3
 SHAPE = (N_REC, 100, 3, 32, 64)
@@ -61,6 +67,16 @@ def test_stream_equals_original(synthetic_zip, monkeypatch):
         assert tgt.dtype == np.int32 and tgt.shape == (100,)
         assert np.array_equal(rec, inputs[i])
         assert np.array_equal(tgt, targets[i])
+
+
+def test_read_meta(synthetic_zip, monkeypatch):
+    monkeypatch.delenv("RADARSENSE_ALLOW_TEST", raising=False)
+    zip_path, originals = synthetic_zip
+    n, targets = read_meta(zip_path, "fulldataset/user4_e1.npz")
+    assert n == N_REC
+    assert np.array_equal(targets, originals["user4_e1"][1])
+    with pytest.raises(PermissionError):
+        read_meta(zip_path, "fulldataset/user10_e1.npz")
 
 
 @pytest.mark.parametrize("env", [None, "0"])

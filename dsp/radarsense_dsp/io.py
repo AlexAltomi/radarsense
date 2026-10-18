@@ -6,6 +6,7 @@ import os
 import re
 import zipfile
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,21 +65,46 @@ def _read_into(f, buf: memoryview) -> None:
         got += n
 
 
+@contextmanager
+def _open_member(zip_path: str | Path, member: str | Member):
+    """Yield the inner .npz ZipFile of one member, after the test-user check."""
+    m = member if isinstance(member, Member) else parse_member(member)
+    _check_allowed(m.user)
+    with zipfile.ZipFile(zip_path) as outer, outer.open(m.name) as raw, zipfile.ZipFile(raw) as npz:
+        yield npz
+
+
+def _read_targets(npz: zipfile.ZipFile) -> np.ndarray:
+    with npz.open("targets.npy") as tf:
+        return np.lib.format.read_array(tf)
+
+
+def _check_inputs_header(f, targets: np.ndarray) -> tuple[int, ...]:
+    shape, fortran_order, dtype = _read_header(f)
+    if dtype != np.dtype("<f4") or fortran_order:
+        raise ValueError(f"unexpected inputs layout: dtype={dtype} fortran={fortran_order}")
+    if shape[1:] != FRAME_SHAPE or shape[0] != len(targets):
+        raise ValueError(f"inputs {shape} does not match targets {targets.shape}")
+    return shape
+
+
+def read_meta(zip_path: str | Path, member: str | Member) -> tuple[int, np.ndarray]:
+    """Return (N, targets[N,100]) from the .npy headers and the targets array; inputs data is never read."""
+    with _open_member(zip_path, member) as npz:
+        targets = _read_targets(npz)
+        with npz.open("inputs.npy") as f:
+            shape = _check_inputs_header(f, targets)
+    return shape[0], targets
+
+
 def iter_recordings(
     zip_path: str | Path, member: str | Member
 ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
     """Yield (inputs[100,3,32,64] float32, targets[100] int32), one recording at a time."""
-    m = member if isinstance(member, Member) else parse_member(member)
-    _check_allowed(m.user)
-    with zipfile.ZipFile(zip_path) as outer, outer.open(m.name) as raw, zipfile.ZipFile(raw) as npz:
-        with npz.open("targets.npy") as tf:
-            targets = np.lib.format.read_array(tf)
+    with _open_member(zip_path, member) as npz:
+        targets = _read_targets(npz)
         with npz.open("inputs.npy") as f:
-            shape, fortran_order, dtype = _read_header(f)
-            if dtype != np.dtype("<f4") or fortran_order:
-                raise ValueError(f"unexpected inputs layout: dtype={dtype} fortran={fortran_order}")
-            if shape[1:] != FRAME_SHAPE or shape[0] != len(targets):
-                raise ValueError(f"inputs {shape} does not match targets {targets.shape}")
+            shape = _check_inputs_header(f, targets)
             for i in range(shape[0]):
                 rec = np.empty(FRAME_SHAPE, dtype=np.float32)
                 _read_into(f, memoryview(rec).cast("B"))
