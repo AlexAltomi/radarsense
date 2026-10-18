@@ -31,7 +31,10 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
 - Members are `fulldataset/user{N}_e{S}[_{fast|slow|wrist}].npz`; user1 has sessions e1–e6, others e1 only;
   outer members are ZIP_DEFLATED.
 - Train composition: user1 = 57% of nominal train recordings; balance per user at training time; the cache keeps everything.
-- Label values {0,1,2,3,6,7}; 0 = no gesture; 10 labelled frames per gesture.
+- Label values {0,1,2,3,6,7}; 0 = no gesture.
+  Every recording has exactly one contiguous gesture; labelled span is 8 frames (users 1-8) or 10 frames (users 9, 11),
+  derived from inventory label counts assuming 200 recordings per class; measured directly for user4 (8) and user9 (10).
+  No gesture-free recordings: 'no gesture' comes from frames outside the labelled span.
 - Label → gesture name mapping: **UNVERIFIED** (to be inferred in Week 2 from train users; update this line).
 - Antenna pair assignment (horizontal / vertical): **UNVERIFIED** (to be inferred in Week 2; update this line).
 
@@ -47,6 +50,9 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
   uint8 true label or 255, 3 reserved) + 3,072 bytes = 3,088 bytes.
 - Detector: infer every 4 frames; accept when last 2 predictions agree with conf ≥ 0.8; 600 ms cooldown;
   re-arm after one "no gesture". Inference never on the Android main thread.
+- Window labelling (Week 3, [tune]): gesture if the window contains >=75% of the labelled span; windows with partial
+  overlap are excluded from training, never labelled no-gesture. Background/false-trigger frames must be >=10 frames
+  from any labelled span.
 
 ## Repo layout
 dsp/ (radarsense_dsp + tests, fixtures in dsp/tests/fixtures) · training/ · backend/replay · backend/api ·
