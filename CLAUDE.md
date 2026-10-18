@@ -8,7 +8,9 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
 1. **Test users user10 and user12 are never loaded before Week 11.** The loader refuses them unless `RADARSENSE_ALLOW_TEST=1`.
    Do not set that variable, do not compute statistics, normalization constants or plots that include them.
 2. **Frozen split** (`training/splits.json`, commit c546264):
-   train user1,2,4,6,7,8,9,11 · val user3,5 · test user10,12 · robustness = anomalous (fast/slow/wrist) files of all users.
+   train user1,2,4,6,7,8,9,11 · val user3,5 · test user10,12 · robustness = anomalous (fast/slow/wrist) files; the
+   headline robustness number comes from user10/user12 anomalous files only, train-user anomaly accuracy is reported
+   separately as secondary (those users were seen in training).
    Never edit splits.json. Normalization constants and label/antenna inference use **train users only**.
 3. **Train on nominal files only.** Anomalous files (fast/slow/wrist) are for the robustness evaluation only.
 4. **No mirroring augmentation** of range-Doppler or angle maps (it swaps left/right / up/down labels).
@@ -28,6 +30,7 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
   N (recordings) varies per file (about 1000–3000), read from the .npy header.
 - Members are `fulldataset/user{N}_e{S}[_{fast|slow|wrist}].npz`; user1 has sessions e1–e6, others e1 only;
   outer members are ZIP_DEFLATED.
+- Train composition: user1 = 57% of nominal train recordings; balance per user at training time; the cache keeps everything.
 - Label values {0,1,2,3,6,7}; 0 = no gesture; 10 labelled frames per gesture.
 - Label → gesture name mapping: **UNVERIFIED** (to be inferred in Week 2 from train users; update this line).
 - Antenna pair assignment (horizontal / vertical): **UNVERIFIED** (to be inferred in Week 2; update this line).
