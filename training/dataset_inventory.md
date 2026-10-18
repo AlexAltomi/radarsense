@@ -70,7 +70,7 @@ Counts only. Gesture = any non-zero label. Start frame, span and runs cover reco
 
 ## Label/antenna inference (exploratory)
 
-Train users user2, user4, user9, user11, e1 nominal; up to 40 recordings per label, frames aligned to the labelled span start. Strongest cell of the unclipped dB map; Doppler is the signed bin (bin - 16), energy-weighted over cells within 20 dB of the peak. Figure: `training/figures/label_antenna_inference.png`. Percentiles are for orientation, not constants. CAUTION: in the figure the phase change happens after the labelled span start for user2/user4 but before it for user9/user11, so the slope tables (taken over the labelled span) are not comparable between these two groups.
+Train users user2, user4, user9, user11, e1 nominal; up to 40 recordings per label, frames aligned to the labelled span start. Strongest cell of the unclipped dB map; Doppler is the signed bin (bin - 16), energy-weighted over cells within 20 dB of the peak. Figure: `training/figures/label_antenna_inference.png`. Percentiles are for orientation, not constants. Timing finding: in the figure the phase change falls inside the labelled span for user2/user4 but about 8 frames before the span start for user9/user11, i.e. users 9/11 are labelled ~8 frames after the motion. The slope tables below are taken over the labelled span, so they are not comparable between these two groups; compare the figure instead.
 
 - user2_e1: read 219 recordings, kept per label `1:40 2:40 3:40 6:40 7:40`, skipped 0; raw dB 1st/99.5th percentile 13.9/52.3
 - user4_e1: read 230 recordings, kept per label `1:40 2:40 3:40 6:40 7:40`, skipped 0; raw dB 1st/99.5th percentile 14.0/53.7

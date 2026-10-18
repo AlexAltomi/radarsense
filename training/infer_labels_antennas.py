@@ -189,9 +189,10 @@ def main() -> None:
         f"Train users {users}, e1 nominal; up to {KEEP} recordings per label, frames aligned to the labelled span "
         f"start. Strongest cell of the unclipped dB map; Doppler is the signed bin (bin - 16), energy-weighted over "
         f"cells within {REL_DB:g} dB of the peak. Figure: `training/figures/label_antenna_inference.png`. "
-        f"Percentiles are for orientation, not constants. CAUTION: in the figure the phase change happens after the "
-        f"labelled span start for user2/user4 but before it for user9/user11, so the slope tables (taken over the "
-        f"labelled span) are not comparable between these two groups."
+        f"Percentiles are for orientation, not constants. Timing finding: in the figure the phase change falls "
+        f"inside the labelled span for user2/user4 but about 8 frames before the span start for user9/user11, i.e. "
+        f"users 9/11 are labelled ~8 frames after the motion. The slope tables below are taken over the labelled "
+        f"span, so they are not comparable between these two groups; compare the figure instead."
     )
     write_section([HEADING, "", intro, "", *notes, "", *tables])
     print(f"wrote {OUT}")
