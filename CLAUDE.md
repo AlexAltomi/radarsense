@@ -61,6 +61,7 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
 - Window labelling (Week 3, [tune]): gesture if the window contains the extended span [s-10, s+L-1] of that
   recording's own labelled span; windows with partial overlap are excluded; never shift dataset labels. Reason: users
   9/11 label ~8 frames after the motion, users 2/4 label over the motion (figure 2bca1f5).
+  Background/false-trigger frames must lie outside [s-20, s+L+9] (>=10 frames from the extended span).
 
 ## Repo layout
 dsp/ (radarsense_dsp + tests, fixtures in dsp/tests/fixtures) · training/ · backend/replay · backend/api ·
