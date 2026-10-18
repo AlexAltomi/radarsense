@@ -34,8 +34,8 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
 - Label values {0,1,2,3,6,7}; 0 = no gesture.
 - Gesture structure: verified per recording for user4_e1 (8-frame span) and user9_e1 (10-frame span): exactly one
   contiguous gesture per recording, no gesture-free recordings. For other nominal files, spans of 8 (users 1-8) or 10
-  (users 9, 11) are inferred from inventory label counts assuming 200 recordings per class; anomalous files differ
-  (user1/2/9 anomalous = 10, user6 slow/wrist mixed). The cache builder verifies this per recording.
+  (users 9, 11) are inferred from inventory label counts assuming 200 recordings per class; anomalous files: span varies per file (8, 10 or mixed); never assume
+  it, always read it from targets. The cache builder verifies this per recording.
 - Label → gesture name mapping: **UNVERIFIED** (to be inferred in Week 2 from train users; update this line).
 - Antenna pair assignment (horizontal / vertical): **UNVERIFIED** (to be inferred in Week 2; update this line).
 
