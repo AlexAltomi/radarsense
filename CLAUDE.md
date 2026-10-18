@@ -15,7 +15,8 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
    Allowed: ±3 frame shift, ±3 dB amplitude, small noise.
 5. **Data never enters git.** `data/` is a junction to `D:\radarsense-data` and is git-ignored.
 6. **Never extract the whole 36.5 GB zip and never load a whole `inputs` array.**
-   Each `.npz` holds `inputs` float32 (1000,100,3,32,64) ≈ 2.46 GB. Stream one recording at a time.
+   Each `.npz` holds `inputs` float32 (N,100,3,32,64), ≈ 2.46 GB per 1000 recordings; N varies per file
+   (about 1000–3000), read from the .npy header. Stream one recording at a time.
    Temporary extraction of a single `.npz` to `D:\radarsense-data\tmp` is allowed; delete it after processing.
 7. **Scope contract.** Out of v1: live radar hardware, custom gestures, Play Store, cloud production hosting, thesis-level DSP.
    Do not add features not in the plan. Nothing new before Week 9.
@@ -24,6 +25,9 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
 ## Dataset facts (verified locally, Week 1)
 - 41 `.npz` files in `radar_dataset.zip` (md5 d63a9645f27ebded613807b674bba63a).
 - `inputs`: float32, (recordings, 100 frames, 3 antennas, 32 chirps, 64 samples). `targets`: int32, (recordings, 100).
+  N (recordings) varies per file (about 1000–3000), read from the .npy header.
+- Members are `fulldataset/user{N}_e{S}[_{fast|slow|wrist}].npz`; user1 has sessions e1–e6, others e1 only;
+  outer members are ZIP_DEFLATED.
 - Label values {0,1,2,3,6,7}; 0 = no gesture; 10 labelled frames per gesture.
 - Label → gesture name mapping: **UNVERIFIED** (to be inferred in Week 2 from train users; update this line).
 - Antenna pair assignment (horizontal / vertical): **UNVERIFIED** (to be inferred in Week 2; update this line).
