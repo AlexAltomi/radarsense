@@ -3,17 +3,21 @@
 Input is a raw real ADC frame (3 antennas, 32 chirps, 64 samples); leading batch dimensions are allowed.
 Output layout is [channel, range, Doppler] = (3, 32, 32), float16:
   ch0  magnitude in dB averaged over the 3 antennas, clipped to [db_min, db_max] and scaled to 0..1
-  ch1  sin(delta_phi) of h_pair, weighted by ch0 (the scaled magnitude, so empty cells give 0)
-  ch2  sin(delta_phi) of v_pair, weighted by ch0
+  ch1  sin(delta_phi) of pair (0,2) ('axis A', labels 2/3; the h_pair argument), weighted by ch0
+       (the scaled magnitude, so empty cells give 0)
+  ch2  sin(delta_phi) of pair (1,2) ('axis B', labels 6/7; the v_pair argument), weighted by ch0
 
 Conventions:
   delta_phi = angle(ant_b) - angle(ant_a) for a pair (a, b), taken per range-Doppler cell.
   np.fft sign convention (e^{-j...}); a tone cos(2*pi*k*n/64 + 2*pi*d*c/32) peaks at range bin k and Doppler
   bin 16 + d (after fftshift, so bin 16 is zero Doppler).
+  Antenna 2 is the L-corner; (0,2) and (1,2) are the orthogonal baselines; the diagonal (0,1) is not used
+  (train users 2/4/9/11, figure in commit 2bca1f5).
+  Doppler sign: an approaching hand has signed Doppler < 0 (bins below 16), likely, from the same figure.
 
-UNVERIFIED (to be confirmed on train-user gestures in the label/antenna task):
-  - the Doppler sign versus the physical direction of motion (positive d = towards or away from the radar);
-  - which antenna pair is horizontal and which is vertical, and the sign of each pair's delta_phi.
+UNVERIFIED:
+  - which axis (A or B) is horizontal and which is vertical, and the direction within each axis.
+No left/right/up/down names in code until verified.
 """
 import numpy as np
 

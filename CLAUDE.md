@@ -37,14 +37,19 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
   (users 9, 11) are inferred from inventory label counts assuming 200 recordings per class; anomalous files: span varies per file (8, 10 or mixed); never assume
   it, always read it from targets. The cache builder verifies this per recording.
 - Label → gesture name mapping: **UNVERIFIED** (to be inferred in Week 2 from train users; update this line).
-- Antenna pair assignment (horizontal / vertical): **UNVERIFIED** (to be inferred in Week 2; update this line).
+- Antenna geometry (train users 2/4/9/11): antenna index 2 is the L-corner; orthogonal pairs are (0,2) and (1,2);
+  (0,1) is the diagonal and responds to all swipes, never use it. Labels 2/3 = opposite sweeps on pair (0,2);
+  labels 6/7 = opposite sweeps on pair (1,2); label 1 shows no consistent angular sweep (likely push, UNVERIFIED).
+  Which axis is horizontal and the direction within each axis: UNVERIFIED.
 
 ## Specs to keep consistent
 - DSP per frame → 3×32×32: subtract chirp mean → Hann + range FFT, keep 32 positive bins → subtract mean over chirps
-  per range bin → Hann + Doppler FFT, fftshift → ch0 = magnitude dB averaged over 3 antennas; ch1/ch2 = sin(Δφ) for
-  horizontal/vertical pairs weighted by normalized magnitude → clip ch0 to fixed dB range (constants from train users,
+  per range bin → Hann + Doppler FFT, fftshift → ch0 = magnitude dB averaged over 3 antennas; ch1 = sin(Δφ) of pair (0,2)
+  ('axis A', labels 2/3), ch2 = sin(Δφ) of pair (1,2) ('axis B', labels 6/7), weighted by normalized magnitude → clip ch0 to fixed dB range (constants from train users,
   stored in `dsp/radarsense_dsp/constants.json`), scale 0–1, store float16.
   Processed frame layout: `[channel, range, Doppler]` = (3, 32, 32); the ch1/ch2 weight is the scaled ch0.
+  Doppler sign: approaching hand = signed Doppler < 0 (bins below 16), likely, from the figure (2bca1f5).
+  No left/right/up/down names in code until verified.
 - Processed cache: `data/processed/<stem>.npy` float16 (N,100,3,32,32), targets int8, `index.json`; resumable
   (write `.partial`, rename when complete, skip finished files). `build_cache.py` (not built yet) must, per
   recording, assert exactly one contiguous gesture span; record per-file span-length histogram and violation count in
@@ -53,9 +58,9 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
   uint8 true label or 255, 3 reserved) + 3,072 bytes = 3,088 bytes.
 - Detector: infer every 4 frames; accept when last 2 predictions agree with conf ≥ 0.8; 600 ms cooldown;
   re-arm after one "no gesture". Inference never on the Android main thread.
-- Window labelling (Week 3, [tune]): gesture if the window contains >=75% of that recording's own labelled span (from
-  its targets, never a per-user constant); windows with partial overlap are excluded from training, never labelled no-gesture. Background/false-trigger frames must be >=10 frames
-  from any labelled span.
+- Window labelling (Week 3, [tune]): gesture if the window contains the extended span [s-10, s+L-1] of that
+  recording's own labelled span; windows with partial overlap are excluded; never shift dataset labels. Reason: users
+  9/11 label ~8 frames after the motion, users 2/4 label over the motion (figure 2bca1f5).
 
 ## Repo layout
 dsp/ (radarsense_dsp + tests, fixtures in dsp/tests/fixtures) · training/ · backend/replay · backend/api ·
