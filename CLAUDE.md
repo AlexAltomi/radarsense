@@ -37,6 +37,7 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
   per range bin → Hann + Doppler FFT, fftshift → ch0 = magnitude dB averaged over 3 antennas; ch1/ch2 = sin(Δφ) for
   horizontal/vertical pairs weighted by normalized magnitude → clip ch0 to fixed dB range (constants from train users,
   stored in `dsp/radarsense_dsp/constants.json`), scale 0–1, store float16.
+  Processed frame layout: `[channel, range, Doppler]` = (3, 32, 32); the ch1/ch2 weight is the scaled ch0.
 - Processed cache: `data/processed/<stem>.npy` float16 (N,100,3,32,32), targets int8, `index.json`; resumable
   (write `.partial`, rename when complete, skip finished files).
 - Wire format to the app: 3×32×32 uint8 frames; binary frame = 16-byte header (uint32 seq, uint64 server ms,
