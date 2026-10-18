@@ -1,0 +1,12 @@
+{
+  "frozen": "2026-10-18",
+  "train": ["user1", "user2", "user4", "user6", "user7", "user8", "user9", "user11"],
+  "val": ["user3", "user5"],
+  "test": ["user10", "user12"],
+  "rules": [
+    "Split is by person; never change after training starts.",
+    "Test users are evaluated once, in Week 11.",
+    "Anomalous files (fast/slow/wrist) are never used for training.",
+    "Cap any single user's share of an epoch (user1 has 12,000 nominal recordings)."
+  ]
+}
