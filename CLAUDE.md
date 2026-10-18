@@ -1,0 +1,55 @@
+# CLAUDE.md — RadarSense v1
+
+Android app that recognizes 5 hand gestures + "no gesture" from **replayed** Infineon 60 GHz FMCW radar recordings
+(Zenodo, CC BY 4.0, DOI 10.5281/zenodo.15178095). UPT Software Development lab project, solo, €0, 19 Oct 2026 → 10 Jan 2027.
+Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Doc disagree, the Doc wins — ask before acting.
+
+## Hard rules (never break, never "temporarily" relax)
+1. **Test users user10 and user12 are never loaded before Week 11.** The loader refuses them unless `RADARSENSE_ALLOW_TEST=1`.
+   Do not set that variable, do not compute statistics, normalization constants or plots that include them.
+2. **Frozen split** (`training/splits.json`, commit c546264):
+   train user1,2,4,6,7,8,9,11 · val user3,5 · test user10,12 · robustness = anomalous (fast/slow/wrist) files of all users.
+   Never edit splits.json. Normalization constants and label/antenna inference use **train users only**.
+3. **Train on nominal files only.** Anomalous files (fast/slow/wrist) are for the robustness evaluation only.
+4. **No mirroring augmentation** of range-Doppler or angle maps (it swaps left/right / up/down labels).
+   Allowed: ±3 frame shift, ±3 dB amplitude, small noise.
+5. **Data never enters git.** `data/` is a junction to `D:\radarsense-data` and is git-ignored.
+6. **Never extract the whole 36.5 GB zip and never load a whole `inputs` array.**
+   Each `.npz` holds `inputs` float32 (1000,100,3,32,64) ≈ 2.46 GB. Stream one recording at a time.
+   Temporary extraction of a single `.npz` to `D:\radarsense-data\tmp` is allowed; delete it after processing.
+7. **Scope contract.** Out of v1: live radar hardware, custom gestures, Play Store, cloud production hosting, thesis-level DSP.
+   Do not add features not in the plan. Nothing new before Week 9.
+8. Every reported metric records git commit + model version next to it.
+
+## Dataset facts (verified locally, Week 1)
+- 41 `.npz` files in `radar_dataset.zip` (md5 d63a9645f27ebded613807b674bba63a).
+- `inputs`: float32, (recordings, 100 frames, 3 antennas, 32 chirps, 64 samples). `targets`: int32, (recordings, 100).
+- Label values {0,1,2,3,6,7}; 0 = no gesture; 10 labelled frames per gesture.
+- Label → gesture name mapping: **UNVERIFIED** (to be inferred in Week 2 from train users; update this line).
+- Antenna pair assignment (horizontal / vertical): **UNVERIFIED** (to be inferred in Week 2; update this line).
+
+## Specs to keep consistent
+- DSP per frame → 3×32×32: subtract chirp mean → Hann + range FFT, keep 32 positive bins → subtract mean over chirps
+  per range bin → Hann + Doppler FFT, fftshift → ch0 = magnitude dB averaged over 3 antennas; ch1/ch2 = sin(Δφ) for
+  horizontal/vertical pairs weighted by normalized magnitude → clip ch0 to fixed dB range (constants from train users,
+  stored in `dsp/radarsense_dsp/constants.json`), scale 0–1, store float16.
+- Processed cache: `data/processed/<stem>.npy` float16 (N,100,3,32,32), targets int8, `index.json`; resumable
+  (write `.partial`, rename when complete, skip finished files).
+- Wire format to the app: 3×32×32 uint8 frames; binary frame = 16-byte header (uint32 seq, uint64 server ms,
+  uint8 true label or 255, 3 reserved) + 3,072 bytes = 3,088 bytes.
+- Detector: infer every 4 frames; accept when last 2 predictions agree with conf ≥ 0.8; 600 ms cooldown;
+  re-arm after one "no gesture". Inference never on the Android main thread.
+
+## Repo layout
+dsp/ (radarsense_dsp + tests, fixtures in dsp/tests/fixtures) · training/ · backend/replay · backend/api ·
+backend/caddy · android/ (com.radarsense.app, minSdk 26, targetSdk 34) · data/ (junction, ignored) ·
+docker-compose.yml · .github/workflows/ci.yml
+
+## How to work
+- Python: ALWAYS use the repo venv — `.venv\Scripts\python.exe` (3.12.10). Never bare `python`/`pip`/`py`,
+  never install packages outside the venv. Lint: `.venv\Scripts\python.exe -m ruff check .`
+  Test: `.venv\Scripts\python.exe -m pytest`
+- Run all tests from the repo root. Each backend service gets a uniquely named package (api: app; replay: replay, never app).
+- Small, testable units. Write the test first for DSP (synthetic targets at known range/Doppler bins).
+- Branches: `feat/...`, `exp/...`, merged to main by PR with a **merge commit** (not squash).
+- If a task seems to require breaking a hard rule, stop and ask.
