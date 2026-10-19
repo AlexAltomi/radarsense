@@ -1,0 +1,79 @@
+{
+  "db_min": 24.38,
+  "db_max": 62.35,
+  "percentiles": {
+    "db_min": 50.0,
+    "db_max": 99.9
+  },
+  "weighting": "equal per user",
+  "pair_a": [
+    0,
+    2
+  ],
+  "pair_b": [
+    1,
+    2
+  ],
+  "source_users": [
+    1,
+    2,
+    4,
+    6,
+    7,
+    8,
+    9,
+    11
+  ],
+  "source_files": [
+    "user11_e1",
+    "user1_e1",
+    "user1_e2",
+    "user1_e3",
+    "user1_e4",
+    "user1_e5",
+    "user1_e6",
+    "user2_e1",
+    "user4_e1",
+    "user6_e1",
+    "user7_e1",
+    "user8_e1",
+    "user9_e1"
+  ],
+  "sampling": "nominal files only, up to 40 recordings per label per file, all 100 frames, raw antenna-averaged dB in 0.01 dB bins",
+  "per_user": {
+    "1": {
+      "db_min": 24.53,
+      "db_max": 63.47
+    },
+    "2": {
+      "db_min": 24.41,
+      "db_max": 64.07
+    },
+    "4": {
+      "db_min": 24.49,
+      "db_max": 67.23
+    },
+    "6": {
+      "db_min": 24.33,
+      "db_max": 59.56
+    },
+    "7": {
+      "db_min": 24.32,
+      "db_max": 58.87
+    },
+    "8": {
+      "db_min": 24.25,
+      "db_max": 54.03
+    },
+    "9": {
+      "db_min": 24.33,
+      "db_max": 64.31
+    },
+    "11": {
+      "db_min": 24.31,
+      "db_max": 61.58
+    }
+  },
+  "script": "training/compute_constants.py",
+  "git_commit": "c6381f842ddecdbe1b6b428bd5c05ae3e63d9be7"
+}

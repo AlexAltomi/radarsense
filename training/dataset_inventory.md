@@ -106,3 +106,22 @@ Mean slope of delta_phi = angle(ant2) - angle(ant1) over the labelled span, rad/
 | 3 | -0.098 (0%) | -0.183 (2%) | +0.018 (75%) | +0.039 (82%) | -0.056 (40%) |
 | 6 | -0.322 (0%) | -0.458 (0%) | +0.034 (75%) | +0.073 (82%) | -0.168 (39%) |
 | 7 | +0.329 (100%) | +0.409 (95%) | -0.024 (20%) | +0.022 (72%) | +0.184 (72%) |
+
+## Constants
+
+`dsp/radarsense_dsp/constants.json`: `db_min` = 50th and `db_max` = 99.9th percentile of the raw antenna-averaged dB, every train user weighted equally. Nominal files only, up to 40 recordings per label per file, all 100 frames (`training/compute_constants.py`, commit c6381f8). `pair_a` = (0,2), `pair_b` = (1,2).
+
+| user | nominal files | db_min (p50) | db_max (p99.9) |
+|---|---|---|---|
+| 1 | 6 (e1-e6) | 24.53 | 63.47 |
+| 2 | 1 | 24.41 | 64.07 |
+| 4 | 1 | 24.49 | 67.23 |
+| 6 | 1 | 24.33 | 59.56 |
+| 7 | 1 | 24.32 | 58.87 |
+| 8 | 1 | 24.25 | 54.03 |
+| 9 | 1 | 24.33 | 64.31 |
+| 11 | 1 | 24.31 | 61.58 |
+| **used (equal per user)** | 13 | **24.38** | **62.35** |
+| pooled (user1-heavy, for comparison) | 13 | 24.43 | 62.83 |
+
+db_max varies 54-67 dB across users (gesture strength); noise floor identical; fixed constants by design, amplitude augmentation in Week 3.
