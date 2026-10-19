@@ -74,3 +74,12 @@ def test_process_file_returns_one_fixed_size_histogram_and_stops_early(tmp_path,
     assert hist.shape == (NBINS,)
     assert kept == {1: 2, 2: 2, 3: 2, 6: 2, 7: 2}
     assert hist.sum() == 10 * 100 * 32 * 32  # recordings 11 and 12 were never processed
+
+
+def test_select_members():
+    ms = [Member("fulldataset/user4_e1.npz", 4, 1, None), Member("fulldataset/user8_e1.npz", 8, 1, None)]
+    assert cc.select_members(ms, None) == ms
+    assert cc.select_members(ms, "user8_e1") == [ms[1]]
+    assert cc.select_members(ms, "fulldataset/user4_e1.npz") == [ms[0]]
+    with pytest.raises(SystemExit):
+        cc.select_members(ms, "user10_e1")  # a test user is not a train nominal member

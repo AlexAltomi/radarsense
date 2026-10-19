@@ -15,6 +15,8 @@ import argparse
 import json
 import subprocess
 import sys
+import time
+import tracemalloc
 from pathlib import Path
 
 import numpy as np
@@ -61,6 +63,16 @@ def train_nominal_members() -> list:
     return [m for m in list_members(ZIP) if m.user in train and m.anomaly is None]
 
 
+def select_members(members: list, only: str | None) -> list:
+    """All members, or the one whose name or stem equals `only` (a test user is never in the list)."""
+    if only is None:
+        return members
+    picked = [m for m in members if only in (m.name, Path(m.name).stem)]
+    if not picked:
+        sys.exit(f"{only!r} is not a train nominal member; choices: {[Path(m.name).stem for m in members]}")
+    return picked
+
+
 def process_file(member) -> tuple[np.ndarray, dict[int, int]]:
     hist = np.zeros(NBINS, dtype=np.int64)
     kept: dict[int, int] = dict.fromkeys(LABELS, 0)
@@ -101,23 +113,35 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", type=Path, default=DEFAULT_CACHE, help=f"histogram cache (default {DEFAULT_CACHE})")
     ap.add_argument("--write", action="store_true")
+    ap.add_argument("--only", metavar="MEMBER", help="process just this train nominal member (stem, e.g. user8_e1)")
     args = ap.parse_args()
+    if args.only and args.write:
+        sys.exit("--write needs the complete cache; run without --only")
 
     members = train_nominal_members()
     cache = load_cache(args.cache)
     if args.write and any(f"hist__{Path(m.name).stem}" not in cache for m in members):
         sys.exit("cache is incomplete; run without --write first")
-    for m in members:
+    tracemalloc.start()  # psutil is not installed; this sees Python/numpy allocations, not zlib or the OS file cache
+    for m in select_members(members, args.only):
         stem = Path(m.name).stem
         if f"hist__{stem}" in cache:
+            print(f"{stem}: already cached", flush=True)
             continue
         print(f"{stem}: streaming...", flush=True)
+        tracemalloc.reset_peak()
+        t0 = time.perf_counter()
         hist, kept = process_file(m)
+        peak_mb = tracemalloc.get_traced_memory()[1] / 2**20
         cache[f"hist__{stem}"] = hist
         cache[f"kept__{stem}"] = np.array([kept[label] for label in LABELS])
         args.cache.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(args.cache, **cache)
-        print(f"{stem}: kept per label {dict(zip(LABELS, cache[f'kept__{stem}'].tolist(), strict=True))}", flush=True)
+        print(f"{stem}: kept per label {dict(zip(LABELS, cache[f'kept__{stem}'].tolist(), strict=True))}; "
+              f"{time.perf_counter() - t0:.0f} s; peak traced memory {peak_mb:.0f} MB", flush=True)
+    if args.only:
+        print("partial run (--only): percentiles are computed only from a complete cache")
+        return
 
     users = per_user(cache, members)
     db_min = balanced_percentile({str(u): h for u, h in users.items()}, DB_MIN_Q)
