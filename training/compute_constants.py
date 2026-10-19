@@ -1,8 +1,9 @@
 """Compute the ch0 dB clip range for dsp/radarsense_dsp/constants.json, TRAIN USERS ONLY, nominal files only.
 
 Usage:
-  python training/compute_constants.py --cache PATH           stream missing files, print the numbers (writes nothing)
-  python training/compute_constants.py --cache PATH --write   write constants.json from a complete cache
+  python training/compute_constants.py            stream missing files, print the numbers (writes nothing)
+  python training/compute_constants.py --write    write constants.json from a complete cache
+--cache PATH defaults to data/tmp/constants_cache.npz (= D:\radarsense-data\tmp\constants_cache.npz).
 
 Per nominal file of a train user (training/splits.json) it keeps up to KEEP recordings per label value, adds the raw
 (unclipped, antenna-averaged) dB of all 100 frames to a 0.01 dB histogram, and caches that histogram per file, so
@@ -27,6 +28,7 @@ from radarsense_dsp.io import TEST_USERS, iter_recordings, list_members
 ZIP = ROOT / "data" / "radar_dataset.zip"
 SPLITS = ROOT / "training" / "splits.json"
 OUT = ROOT / "dsp" / "radarsense_dsp" / "constants.json"
+DEFAULT_CACHE = ROOT / "data" / "tmp" / "constants_cache.npz"  # data/ is the junction to D:\radarsense-data
 LABELS = (1, 2, 3, 6, 7)
 KEEP = 40
 DB_MIN_Q, DB_MAX_Q = 50.0, 99.9
@@ -97,7 +99,7 @@ def git(*args: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cache", type=Path, required=True)
+    ap.add_argument("--cache", type=Path, default=DEFAULT_CACHE, help=f"histogram cache (default {DEFAULT_CACHE})")
     ap.add_argument("--write", action="store_true")
     args = ap.parse_args()
 
@@ -113,6 +115,7 @@ def main() -> None:
         hist, kept = process_file(m)
         cache[f"hist__{stem}"] = hist
         cache[f"kept__{stem}"] = np.array([kept[label] for label in LABELS])
+        args.cache.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(args.cache, **cache)
         print(f"{stem}: kept per label {dict(zip(LABELS, cache[f'kept__{stem}'].tolist(), strict=True))}", flush=True)
 
