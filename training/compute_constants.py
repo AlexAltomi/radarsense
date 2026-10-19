@@ -3,7 +3,7 @@
 Usage:
   python training/compute_constants.py            stream missing files, print the numbers (writes nothing)
   python training/compute_constants.py --write    write constants.json from a complete cache
---cache PATH defaults to data/tmp/constants_cache.npz (= D:\radarsense-data\tmp\constants_cache.npz).
+--cache PATH defaults to data/tmp/constants_cache.npz (= D:/radarsense-data/tmp/constants_cache.npz).
 
 Per nominal file of a train user (training/splits.json) it keeps up to KEEP recordings per label value, adds the raw
 (unclipped, antenna-averaged) dB of all 100 frames to a 0.01 dB histogram, and caches that histogram per file, so
