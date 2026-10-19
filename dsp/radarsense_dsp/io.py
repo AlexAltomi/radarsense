@@ -97,15 +97,28 @@ def read_meta(zip_path: str | Path, member: str | Member) -> tuple[int, np.ndarr
     return shape[0], targets
 
 
-def iter_recordings(
-    zip_path: str | Path, member: str | Member
-) -> Iterator[tuple[np.ndarray, np.ndarray]]:
-    """Yield (inputs[100,3,32,64] float32, targets[100] int32), one recording at a time."""
+def _iter_inputs(f, n: int) -> Iterator[np.ndarray]:
+    for _ in range(n):
+        rec = np.empty(FRAME_SHAPE, dtype=np.float32)
+        _read_into(f, memoryview(rec).cast("B"))
+        yield rec
+
+
+@contextmanager
+def open_recordings(zip_path: str | Path, member: str | Member):
+    """Yield (targets[N, frames], recordings): targets are read up front, recordings is a one-pass iterator
+    over inputs[100,3,32,64] float32. Lets a caller inspect the targets before paying for the inputs."""
     with _open_member(zip_path, member) as npz:
         targets = _read_targets(npz)
         with npz.open("inputs.npy") as f:
             shape = _check_inputs_header(f, targets)
-            for i in range(shape[0]):
-                rec = np.empty(FRAME_SHAPE, dtype=np.float32)
-                _read_into(f, memoryview(rec).cast("B"))
-                yield rec, targets[i].copy()
+            yield targets, _iter_inputs(f, shape[0])
+
+
+def iter_recordings(
+    zip_path: str | Path, member: str | Member
+) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    """Yield (inputs[100,3,32,64] float32, targets[100] int32), one recording at a time."""
+    with open_recordings(zip_path, member) as (targets, recordings):
+        for i, rec in enumerate(recordings):
+            yield rec, targets[i].copy()

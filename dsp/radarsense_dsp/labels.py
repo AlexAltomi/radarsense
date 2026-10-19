@@ -60,3 +60,20 @@ def analyze_targets(targets: np.ndarray) -> dict:
         "runs_hist": _sorted(runs_hist),
         "contiguous": runs_hist[1],
     }
+
+
+def span_violations(targets: np.ndarray) -> list[tuple[int, str]]:
+    """(recording index, kind) for every recording that is not exactly one contiguous gesture of a single value.
+
+    Kinds: no_gesture, multiple_values (checked before split_span), split_span.
+    """
+    out: list[tuple[int, str]] = []
+    for i, row in enumerate(targets):
+        idx = np.flatnonzero(row)
+        if len(idx) == 0:
+            out.append((i, "no_gesture"))
+        elif len(np.unique(row[idx])) > 1:
+            out.append((i, "multiple_values"))
+        elif idx[-1] - idx[0] + 1 != len(idx):
+            out.append((i, "split_span"))
+    return out

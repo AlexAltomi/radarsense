@@ -1,6 +1,6 @@
 import numpy as np
 
-from radarsense_dsp.labels import analyze_targets
+from radarsense_dsp.labels import analyze_targets, span_violations
 
 
 def make(*recs):
@@ -58,3 +58,18 @@ def test_all_zero_input_has_no_start_stats():
     assert a["zero_gesture"] == 2
     assert a["start"] is None
     assert a["span_hist"] == {}
+
+
+def test_span_violations_none_for_clean_recordings():
+    assert span_violations(make([(3, 20, 10)], [(1, 0, 8)], [(7, 90, 10)])) == []
+
+
+def test_span_violations_kinds_and_order():
+    t = make(
+        [(3, 20, 10)],  # 0 clean
+        [],  # 1 no gesture
+        [(3, 10, 5), (3, 30, 5)],  # 2 split span
+        [(1, 10, 5), (6, 15, 5)],  # 3 two values (contiguous)
+        [(1, 10, 5), (6, 40, 5)],  # 4 two values and split: reported as multiple_values
+    )
+    assert span_violations(t) == [(1, "no_gesture"), (2, "split_span"), (3, "multiple_values"), (4, "multiple_values")]
