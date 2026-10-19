@@ -1,0 +1,6 @@
+#!/bin/sh
+# Blocks the commit if ruff or pytest fails. Install once: cp scripts/pre-commit .git/hooks/pre-commit
+cd "$(git rev-parse --show-toplevel)" || exit 1
+PY=.venv/Scripts/python.exe
+"$PY" -m ruff check . || { echo "pre-commit: ruff failed, commit blocked" >&2; exit 1; }
+"$PY" -m pytest -q || { echo "pre-commit: pytest failed, commit blocked" >&2; exit 1; }
