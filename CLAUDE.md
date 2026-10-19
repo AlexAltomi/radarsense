@@ -50,10 +50,12 @@ Master plan: "RadarSense v1 — Master Plan" Claude Doc. If this file and the Do
   Processed frame layout: `[channel, range, Doppler]` = (3, 32, 32); the ch1/ch2 weight is the scaled ch0.
   Doppler sign: approaching hand = signed Doppler < 0 (bins below 16), likely, from the figure (2bca1f5).
   No left/right/up/down names in code until verified.
-- Processed cache: `data/processed/<stem>.npy` float16 (N,100,3,32,32), targets int8, `index.json`; resumable
-  (write `.partial`, rename when complete, skip finished files). `build_cache.py` (not built yet) must, per
+- Processed cache: `data/processed/<stem>.npy` float16 (N,100,3,32,32), `<stem>.targets.npy` int8 (N,100),
+  `index.json`; resumable (write `.partial`, rename when complete, skip finished files). `build_cache.py` must, per
   recording, assert exactly one contiguous gesture span; record per-file span-length histogram and violation count in
-  `index.json`; and fail with a clear message on any violation.
+  `index.json`. On a violation it skips that file (index status "violation" plus the first indices), continues with
+  the other files and exits 1 with a summary. Downstream code must never read a file whose index status isn't
+  "complete". Never caches user10/user12.
 - Wire format to the app: 3×32×32 uint8 frames; binary frame = 16-byte header (uint32 seq, uint64 server ms,
   uint8 true label or 255, 3 reserved) + 3,072 bytes = 3,088 bytes.
 - Detector: infer every 4 frames; accept when last 2 predictions agree with conf ≥ 0.8; 600 ms cooldown;
