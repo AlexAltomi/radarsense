@@ -105,6 +105,31 @@ def per_user(cache: dict[str, np.ndarray], members: list) -> dict[int, np.ndarra
     return users
 
 
+def constants_dict(users: dict[int, np.ndarray], members: list, commit: str) -> dict:
+    hists = {str(u): h for u, h in users.items()}
+    return {
+        "db_min": round(balanced_percentile(hists, DB_MIN_Q), 2),
+        "db_max": round(balanced_percentile(hists, DB_MAX_Q), 2),
+        "percentiles": {"db_min": DB_MIN_Q, "db_max": DB_MAX_Q},
+        "weighting": "equal per user",
+        "pair_a": list(PAIR_A),
+        "pair_b": list(PAIR_B),
+        "source_users": sorted(users),
+        "source_files": [Path(m.name).stem for m in members],
+        "sampling": f"nominal files only, up to {KEEP} recordings per label per file, all 100 frames, "
+        f"raw antenna-averaged dB in {BIN} dB bins",
+        "per_user": {
+            str(u): {
+                "db_min": round(percentile_from_counts(h, DB_MIN_Q), 2),
+                "db_max": round(percentile_from_counts(h, DB_MAX_Q), 2),
+            }
+            for u, h in sorted(users.items())
+        },
+        "script": "training/compute_constants.py",
+        "git_commit": commit,
+    }
+
+
 def git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
 
@@ -159,20 +184,7 @@ def main() -> None:
         return
     if git("status", "--porcelain", "--untracked-files=no"):
         sys.exit("tracked files are modified; commit first so the recorded git commit is accurate")
-    constants = {
-        "db_min": round(db_min, 2),
-        "db_max": round(db_max, 2),
-        "percentiles": {"db_min": DB_MIN_Q, "db_max": DB_MAX_Q},
-        "pair_a": list(PAIR_A),
-        "pair_b": list(PAIR_B),
-        "source_users": sorted(users),
-        "source_files": [Path(m.name).stem for m in members],
-        "sampling": f"nominal files only, up to {KEEP} recordings per label per file, all 100 frames, "
-        f"raw antenna-averaged dB in {BIN} dB bins, every user weighted equally",
-        "script": "training/compute_constants.py",
-        "git_commit": git("rev-parse", "HEAD"),
-    }
-    OUT.write_text(json.dumps(constants, indent=2) + "\n", encoding="utf-8")
+    OUT.write_text(json.dumps(constants_dict(users, members, git("rev-parse", "HEAD")), indent=2) + "\n", encoding="utf-8")
     print(f"wrote {OUT}")
 
 

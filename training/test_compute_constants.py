@@ -83,3 +83,17 @@ def test_select_members():
     assert cc.select_members(ms, "fulldataset/user4_e1.npz") == [ms[0]]
     with pytest.raises(SystemExit):
         cc.select_members(ms, "user10_e1")  # a test user is not a train nominal member
+
+
+def test_constants_dict_fields():
+    users = {1: db_histogram(np.full(100, 20.0)), 2: db_histogram(np.full(100, 40.0))}
+    members = [Member("fulldataset/user1_e1.npz", 1, 1, None), Member("fulldataset/user2_e1.npz", 2, 1, None)]
+    c = cc.constants_dict(users, members, commit="abc123")
+    assert c["pair_a"] == [0, 2] and c["pair_b"] == [1, 2]
+    assert c["percentiles"] == {"db_min": 50.0, "db_max": 99.9}
+    assert c["weighting"] == "equal per user"
+    assert c["source_users"] == [1, 2] and c["source_files"] == ["user1_e1", "user2_e1"]
+    assert c["git_commit"] == "abc123"
+    assert c["db_min"] == pytest.approx(20.0, abs=0.01) and c["db_max"] == pytest.approx(40.0, abs=0.01)
+    assert c["per_user"]["1"] == {"db_min": pytest.approx(20.0, abs=0.01), "db_max": pytest.approx(20.0, abs=0.01)}
+    assert c["per_user"]["2"] == {"db_min": pytest.approx(40.0, abs=0.01), "db_max": pytest.approx(40.0, abs=0.01)}
