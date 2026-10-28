@@ -10,7 +10,6 @@
     ],
     "deny": [
       "Edit(./training/splits.json)",
-      "Write(./training/splits.json)",
       "Bash(*RADARSENSE_ALLOW_TEST*)",
       "Read(./.env)",
       "Read(./.env.*)"

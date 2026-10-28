@@ -78,6 +78,8 @@ docker-compose.yml · .github/workflows/ci.yml
   Test: `.venv\Scripts\python.exe -m pytest`
 - Run all tests from the repo root. Each backend service gets a uniquely named package (api: app; replay: replay, never app).
 - Install the pre-commit hook once per clone: `cp scripts/pre-commit .git/hooks/pre-commit` (blocks commits when ruff or pytest fails).
+  Likewise `cp scripts/commit-msg .git/hooks/commit-msg` (strips AI attribution lines from commit messages).
+- Never add Co-Authored-By, Claude-Session or "Generated with Claude Code" lines to commits or PRs.
 - Small, testable units. Write the test first for DSP (synthetic targets at known range/Doppler bins).
 - Branches: `feat/...`, `exp/...`, merged to main by PR with a **merge commit** (not squash).
 - If a task seems to require breaking a hard rule, stop and ask.

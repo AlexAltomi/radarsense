@@ -1,0 +1,8 @@
+#!/bin/sh
+# Strips AI attribution lines from the commit message ($1) and trailing blank lines.
+# Install once: cp scripts/commit-msg .git/hooks/commit-msg
+msg="$1"
+tmp="$msg.tmp"
+grep -v -i -F -e "Co-Authored-By: Claude" -e "Generated with [Claude Code]" -e "Claude-Session:" "$msg" |
+    awk '/^[[:space:]]*$/ { blank = blank $0 "\n"; next } { printf "%s", blank; blank = ""; print }' > "$tmp"
+mv "$tmp" "$msg"
