@@ -72,13 +72,20 @@ All facts in this section were checked locally in Week 1, except those marked "N
 - The label values are 0, 1, 2, 3, 6 and 7. Label 0 means "no gesture".
 - User1 supplies 57% of the nominal training recordings. Training balances the users, and the cache keeps all
   recordings.
-- Every recording contains exactly one contiguous gesture. This was verified recording by recording for user4_e1
-  (span of 8 frames) and user9_e1 (span of 10 frames), and no recording is free of gestures. For the other nominal
-  files the span length is inferred from the label counts in the inventory, assuming 200 recordings per class: 8
-  frames for users 1 to 8, and 10 frames for users 9 and 11. For anomalous files the span length differs from file to
-  file (8, 10 or a mixture), so it is never assumed and always read from `targets`. The cache builder checks this for
-  every recording.
-- Not yet verified: the gesture name of each label value. The data shows which labels form opposite pairs and which antenna pair each one moves along (see Antenna geometry), but not the names; these need the dataset authors' documentation.
+- Every recording of the 15 cached nominal files (the files of the train and validation users) was checked by the
+  cache builder, and each one holds exactly one contiguous gesture with a single label value. No recording is free
+  of gestures, and the cache index records 0 span violations. The span length measured in `span_hist` is the same for
+  every recording of a user:
+  - 8 frames for users 1 to 8: user1 (sessions e1 to e6, 12,000 recordings), user2 (3,000 recordings), and users 3,
+    4, 5, 6, 7 and 8 (1,000 recordings each).
+  - 10 frames for users 9 and 11 (1,000 recordings each).
+
+  The nominal files of the test users are locked and not cached, so their span length is not known. For anomalous
+  files the span length differs from file to file (8, 10 or a mixture), so it is never assumed and always read from
+  `targets`. The cache builder checks this for every recording.
+- Not yet verified: the gesture name of each label value. The data shows which labels form opposite pairs and which
+  antenna pair each one moves along (see Antenna geometry), but not the names; these need the dataset authors'
+  documentation.
 - Antenna geometry, observed on the train users 2, 4, 9 and 11: antenna 2 sits in the corner of the L-shaped
   arrangement. The orthogonal antenna pairs are (0,2) and (1,2). The pair (0,1) is the diagonal; it responds to all
   swipes and is never used. Labels 2 and 3 are opposite sweeps on the pair (0,2). Labels 6 and 7 are opposite sweeps
