@@ -78,8 +78,7 @@ All facts in this section were checked locally in Week 1, except those marked "N
   frames for users 1 to 8, and 10 frames for users 9 and 11. For anomalous files the span length differs from file to
   file (8, 10 or a mixture), so it is never assumed and always read from `targets`. The cache builder checks this for
   every recording.
-- Not yet verified: the mapping from label values to gesture names. It will be inferred from the train users in
-  Week 2.
+- Not yet verified: the gesture name of each label value. The data shows which labels form opposite pairs and which antenna pair each one moves along (see Antenna geometry), but not the names; these need the dataset authors' documentation.
 - Antenna geometry, observed on the train users 2, 4, 9 and 11: antenna 2 sits in the corner of the L-shaped
   arrangement. The orthogonal antenna pairs are (0,2) and (1,2). The pair (0,1) is the diagonal; it responds to all
   swipes and is never used. Labels 2 and 3 are opposite sweeps on the pair (0,2). Labels 6 and 7 are opposite sweeps
@@ -90,18 +89,19 @@ All facts in this section were checked locally in Week 1, except those marked "N
 
 Each radar frame is turned into an image of 3 channels of 32 by 32 values. The steps are, in this order:
 
-1. Subtract the mean over the chirps.
+1. Subtract each chirp's mean over its 64 samples (removes the DC offset of every chirp).
 2. Apply a Hann window (a smooth taper that reduces spectral leakage) and a range FFT (fast Fourier transform), and
    keep the 32 positive range bins.
 3. Subtract the mean over the chirps for each range bin.
 4. Apply a Hann window and a Doppler FFT, then `fftshift` so that zero Doppler is at bin 16.
-5. Build the three channels.
-   - Channel 0 is the magnitude in dB, averaged over the 3 antennas.
-   - Channel 1 is sin(Δφ) of the antenna pair (0,2), called axis A (labels 2 and 3).
-   - Channel 2 is sin(Δφ) of the antenna pair (1,2), called axis B (labels 6 and 7).
-   - Channels 1 and 2 are weighted by the normalized magnitude, which is the scaled channel 0.
-6. Clip channel 0 to a fixed dB range and scale it to 0 to 1. The range constants are computed from the train users
-   and stored in `dsp/radarsense_dsp/constants.json`.
+5. Build channel 0. Take the magnitude of each cell in dB and average it over the 3 antennas. Clip the result to a
+   fixed dB range and scale it to 0 to 1. The range constants are computed from the train users and stored in
+   `dsp/radarsense_dsp/constants.json`.
+6. Build channels 1 and 2. For an antenna pair (a, b), Δφ is the phase of antenna b minus the phase of antenna a in
+   each range-Doppler cell. Each of these channels is sin(Δφ) multiplied by the scaled channel 0 from step 5, so
+   cells without a reflection give 0.
+   - Channel 1 uses the antenna pair (0,2), called axis A (labels 2 and 3).
+   - Channel 2 uses the antenna pair (1,2), called axis B (labels 6 and 7).
 7. Store the result as float16.
 
 A processed frame has the layout `[channel, range, Doppler]`, which is (3, 32, 32).
