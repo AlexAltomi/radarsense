@@ -1,6 +1,8 @@
-"""Structure of the per-frame `targets` arrays: how many frames are labelled per recording, where, and in how many runs.
+"""Analyze the structure of the per-frame `targets` arrays.
 
-Label 0 means "no gesture"; every other value is a gesture. Works on targets only, never on radar data.
+The functions here report how many frames of each recording are labelled, where the labelled frames start, and how
+many separate runs they form. Label 0 means "no gesture", and every other value is a gesture. The module works on
+the targets only and never touches radar data.
 """
 from collections import Counter
 
@@ -15,10 +17,11 @@ def _sorted(counter: Counter) -> dict[int, int]:
 
 
 def analyze_targets(targets: np.ndarray) -> dict:
-    """Summarize targets[R, frames].
+    """Summarize a targets array of shape (recordings, frames).
 
-    Start and span statistics cover only recordings that contain a gesture. `runs_hist` counts maximal runs of
-    consecutive labelled (non-zero) frames; one run means the gesture is contiguous.
+    The start and span statistics cover only the recordings that contain a gesture. The entry `runs_hist` counts the
+    maximal runs of consecutive labelled (non-zero) frames of each recording. A single run means that the gesture
+    is contiguous.
     """
     labelled_hist: Counter = Counter()
     span_hist: Counter = Counter()
@@ -63,9 +66,11 @@ def analyze_targets(targets: np.ndarray) -> dict:
 
 
 def span_violations(targets: np.ndarray) -> list[tuple[int, str]]:
-    """(recording index, kind) for every recording that is not exactly one contiguous gesture of a single value.
+    """List the violations as pairs of recording index and kind.
 
-    Kinds: no_gesture, multiple_values (checked before split_span), split_span.
+    A recording is a violation unless it holds exactly one contiguous gesture of a single label value. The kinds are
+    `no_gesture`, `multiple_values` and `split_span`. A recording with several values is reported as
+    `multiple_values` even if it is also split.
     """
     out: list[tuple[int, str]] = []
     for i, row in enumerate(targets):

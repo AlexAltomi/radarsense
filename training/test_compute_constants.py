@@ -17,7 +17,7 @@ from radarsense_dsp.io import Member
 
 
 def make_zip(tmp_path, stem, labels):
-    """One train-user member with len(labels) recordings; recording i has an 8-frame gesture of labels[i]."""
+    """Create one train-user member with len(labels) recordings. Recording i has an 8-frame gesture with the label labels[i]."""
     rng = np.random.default_rng(0)
     inputs = rng.standard_normal((len(labels), 100, 3, 32, 64)).astype(np.float32)
     targets = np.zeros((len(labels), 100), dtype=np.int32)
@@ -46,7 +46,7 @@ def test_out_of_range_values_are_clipped_into_edge_bins():
 def test_balanced_percentile_weights_users_equally():
     big = db_histogram(np.full(1000, 20.0))
     small = db_histogram(np.full(10, 40.0))
-    assert percentile_from_counts(big + small, 75) == pytest.approx(20.0, abs=0.01)  # pooled: big user dominates
+    assert percentile_from_counts(big + small, 75) == pytest.approx(20.0, abs=0.01)  # In the pooled histogram the big user dominates.
     assert balanced_percentile({"a": big, "b": small}, 75) == pytest.approx(40.0, abs=0.01)
 
 
@@ -67,13 +67,13 @@ def test_per_user_sums_files_and_percentiles_come_from_histograms_only():
 
 
 def test_process_file_returns_one_fixed_size_histogram_and_stops_early(tmp_path, monkeypatch):
-    labels = [1, 2, 3, 6, 7, 1, 2, 3, 6, 7, 1, 2]  # with KEEP=2 every label is full after 10 recordings
+    labels = [1, 2, 3, 6, 7, 1, 2, 3, 6, 7, 1, 2]  # With KEEP=2 every label is full after 10 recordings.
     monkeypatch.setattr(cc, "ZIP", make_zip(tmp_path, "user4_e1", labels))
     monkeypatch.setattr(cc, "KEEP", 2)
     hist, kept = process_file(Member("fulldataset/user4_e1.npz", 4, 1, None))
     assert hist.shape == (NBINS,)
     assert kept == {1: 2, 2: 2, 3: 2, 6: 2, 7: 2}
-    assert hist.sum() == 10 * 100 * 32 * 32  # recordings 11 and 12 were never processed
+    assert hist.sum() == 10 * 100 * 32 * 32  # Recordings 11 and 12 were never processed.
 
 
 def test_select_members():
@@ -82,7 +82,7 @@ def test_select_members():
     assert cc.select_members(ms, "user8_e1") == [ms[1]]
     assert cc.select_members(ms, "fulldataset/user4_e1.npz") == [ms[0]]
     with pytest.raises(SystemExit):
-        cc.select_members(ms, "user10_e1")  # a test user is not a train nominal member
+        cc.select_members(ms, "user10_e1")  # A test user is not a nominal member of a train user.
 
 
 def test_constants_dict_fields():

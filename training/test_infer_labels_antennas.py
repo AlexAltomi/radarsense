@@ -23,6 +23,6 @@ def test_window_features_recover_range_doppler_and_phase_slope():
     assert f["range"].shape == (31,) and f["phasors"].shape == (3, 31)
     assert (f["range"][PRE : PRE + LENGTH] == 12).all()
     assert f["doppler"][PRE : PRE + LENGTH] == pytest.approx(3, abs=0.5)
-    assert f["slopes"][0] == pytest.approx(SLOPE, abs=1e-2)  # pair (0,1): delta_phi = angle(ant1) - angle(ant0)
-    assert f["slopes"][1] == pytest.approx(0, abs=1e-2)  # pair (0,2)
-    assert f["slopes"][2] == pytest.approx(-SLOPE, abs=1e-2)  # pair (1,2) = angle(ant2) - angle(ant1)
+    assert f["slopes"][0] == pytest.approx(SLOPE, abs=1e-2)  # For the pair (0,1), delta_phi = angle(ant1) - angle(ant0).
+    assert f["slopes"][1] == pytest.approx(0, abs=1e-2)  # This is the pair (0,2).
+    assert f["slopes"][2] == pytest.approx(-SLOPE, abs=1e-2)  # For the pair (1,2), delta_phi = angle(ant2) - angle(ant1).

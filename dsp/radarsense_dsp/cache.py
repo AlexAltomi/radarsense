@@ -1,15 +1,18 @@
-"""Processed cache: raw radar recordings -> float16 range-Doppler/phase frames on disk, one member at a time.
+"""Build the processed cache: raw radar recordings become float16 range-Doppler and phase frames on disk.
 
-Files in the output directory:
-  <stem>.npy          float16 (N, 100, 3, 32, 32)
-  <stem>.targets.npy  int8 (N, 100)
-  index.json          {"version": 1, "files": {stem: entry}}
-Downstream code must read a file only if its index entry has status "complete".
+One member (one .npz file of the dataset) is processed at a time. The output directory contains these files:
 
-A member is first checked for span violations on its targets alone (exactly one contiguous gesture of a single value
-per recording); a violating member is skipped, recorded with status "violation" and never streamed. Otherwise frames
-are written to `<stem>.npy.partial`, the targets file is renamed first and the frames file last, and the index entry is
-written after both, so `<stem>.npy` existing means the member is complete. Test users are refused by the loader.
+  <stem>.npy          float16 frames with shape (N, 100, 3, 32, 32)
+  <stem>.targets.npy  int8 targets with shape (N, 100)
+  index.json          a description of every member, in the form {"version": 1, "files": {stem: entry}}
+
+Code that reads the cache must use a file only if its index entry has the status "complete".
+
+A member is first checked for span violations using its targets alone. Every recording must contain exactly one
+contiguous gesture with a single label value. A member with a violation is skipped, recorded with the status
+"violation" and never streamed. Otherwise the frames are written to `<stem>.npy.partial`. The targets file is renamed
+first and the frames file last, and the index entry is written after both. If `<stem>.npy` exists, the member is
+therefore complete. The loader in `radarsense_dsp.io` refuses the test users, so they never enter the cache.
 """
 import json
 import os
@@ -58,7 +61,7 @@ class Constants:
 
 @dataclass(frozen=True)
 class BuildResult:
-    outcome: str  # "built", "skipped" or "violation"
+    outcome: str  # One of "built", "skipped" or "violation".
     entry: dict
 
 
@@ -88,7 +91,7 @@ def _save_index(out_dir: Path, index: dict) -> None:
 
 
 def plan_members(members: list[Member], nominal_only: bool = False) -> list[Member]:
-    """Nominal files first, then anomalous; test users are never included."""
+    """Order the members for building: nominal files first, then anomalous ones. Test users are never included."""
     usable = [m for m in members if m.user not in TEST_USERS]
     nominal = sorted((m for m in usable if m.anomaly is None), key=lambda m: (m.user, m.session))
     if nominal_only:
@@ -98,7 +101,7 @@ def plan_members(members: list[Member], nominal_only: bool = False) -> list[Memb
 
 
 def estimate_cache_bytes(zip_path: str | Path, members: list[Member]) -> int:
-    """Disk needed for these members, from the uncompressed member sizes (no data is read)."""
+    """Estimate the disk space in bytes that these members need. Only the uncompressed member sizes are read."""
     with zipfile.ZipFile(zip_path) as z:
         sizes = {i.filename: i.file_size for i in z.infolist()}
     return sum(
@@ -148,8 +151,9 @@ def build_file(
         if entry["status"] == "complete" and frames_path.exists() and targets_path.exists():
             if entry["constants"] != constants.as_dict():
                 raise StaleConstantsError(
-                    f"{stem}: cached with constants {entry['constants']} but the current constants are "
-                    f"{constants.as_dict()}; delete {out_dir} (or this member's files and index entry) to rebuild"
+                    f"{stem} was cached with the constants {entry['constants']}, but the current constants are "
+                    f"{constants.as_dict()}. Delete {out_dir} (or the files and index entry of this member) "
+                    "and run the build again."
                 )
             return BuildResult("skipped", entry)
 
@@ -162,7 +166,7 @@ def build_file(
             _record(out_dir, index, stem, entry, t0)
             return BuildResult("violation", entry)
         if targets.min() < 0 or targets.max() > np.iinfo(np.int8).max:
-            raise ValueError(f"{stem}: target values do not fit int8")
+            raise ValueError(f"The target values of {stem} do not fit into int8, so they cannot be cached.")
 
         n = len(targets)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -173,12 +177,12 @@ def build_file(
             for rec in recordings:
                 frames = process_frames(rec, constants.db_min, constants.db_max, constants.pair_a, constants.pair_b)
                 if not np.isfinite(frames).all():
-                    raise FloatingPointError(f"{stem}: non-finite values in the processed frames")
+                    raise FloatingPointError(f"The processed frames of {stem} contain NaN or infinite values. Check the raw recording.")
                 f.write(frames.tobytes())
             f.flush()
             os.fsync(f.fileno())
             if f.tell() != header_len + n * OUT_RECORD_BYTES:
-                raise OSError(f"{stem}: wrote {f.tell()} bytes, expected {header_len + n * OUT_RECORD_BYTES}")
+                raise OSError(f"Wrote {f.tell()} bytes for {stem}, but expected {header_len + n * OUT_RECORD_BYTES}. Check the free disk space.")
 
         targets_partial = out_dir / f"{stem}.targets.npy.partial"
         with open(targets_partial, "wb") as tf:

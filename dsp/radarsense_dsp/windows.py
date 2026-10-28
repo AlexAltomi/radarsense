@@ -1,12 +1,18 @@
-"""Training windows over the processed cache: which 32-frame windows are gesture, no-gesture or excluded, the dataset
-index over complete cache members, memory-mapped reads, and per-user balancing.
+"""Training windows over the processed cache.
 
-Window rules (CLAUDE.md, "Window labelling"), per recording with labelled span [s, s+L-1] and label g:
-  gesture     the window contains the extended span [s-PRE, s+L-1] fully  -> class CLASS_MAP[g]
-  no gesture  the window has no overlap with [s-2*GUARD, s+L+GUARD-1]     -> class 0
-  otherwise   excluded (never labelled no-gesture); dataset labels are never shifted.
-CLASS_MAP is the only place the label -> class mapping lives. Test users are refused; anomalous members are skipped
-unless nominal_only=False; only index.json entries with status "complete" are read.
+This module decides which 32-frame windows count as gesture, no-gesture or excluded. It also builds the dataset
+index over the complete cache members, reads windows from memory-mapped files, and balances the users. The rules
+are described under "Training windows" in docs/project-rules.md.
+
+For a recording with the labelled span [s, s+L-1] and the label g, a window is classified as follows:
+
+  gesture     The window contains the extended span [s-PRE, s+L-1] completely. Its class is CLASS_MAP[g].
+  no gesture  The window does not overlap [s-PRE-GUARD, s+L-1+GUARD]. Its class is 0.
+  otherwise   The window is excluded. It is never labelled as no-gesture.
+
+Dataset labels are never shifted. CLASS_MAP is the only place that defines the mapping from label values to class
+numbers. Test users are refused. Anomalous members are skipped unless `nominal_only=False` is passed. Only index.json
+entries with the status "complete" are read.
 """
 import hashlib
 import json
@@ -20,12 +26,12 @@ from radarsense_dsp.io import TEST_USERS
 
 WINDOW = 32
 STRIDE = 4
-PRE = 10  # frames before s that a gesture window must also contain
-GUARD = 10  # no-gesture windows stay >= GUARD frames away from the extended span
+PRE = 10  # The number of frames before s that a gesture window must also contain.
+GUARD = 10  # No-gesture windows stay at least this many frames away from the extended span.
 FRAMES = 100
 
 CLASS_MAP: dict[int, int] = {0: 0, 1: 1, 2: 2, 3: 3, 6: 4, 7: 5}
-CLASS_NAMES = ("none", "label1", "label2", "label3", "label6", "label7")  # gesture names are UNVERIFIED
+CLASS_NAMES = ("none", "label1", "label2", "label3", "label6", "label7")  # Not yet verified: the real gesture names.
 N_CLASSES = len(CLASS_NAMES)
 
 ROW_DTYPE = np.dtype([("member", "i4"), ("recording", "i4"), ("start", "i2"), ("cls", "i1"), ("user", "i2")])
@@ -43,24 +49,24 @@ def window_starts() -> range:
 
 
 def gesture_span(row: np.ndarray) -> tuple[int, int, int]:
-    """(label, s, L) of a recording that holds exactly one contiguous gesture of a single value."""
+    """Return (label, s, L) for a recording that holds exactly one contiguous gesture of a single label value."""
     idx = np.flatnonzero(row)
     if len(idx) == 0:
-        raise ValueError("recording has no gesture")
+        raise ValueError("The recording has no gesture, so it has no labelled span.")
     label = int(row[idx[0]])
     if (row[idx] != label).any():
-        raise ValueError("recording has more than one label value")
+        raise ValueError("The recording has more than one label value, so it has no single labelled span.")
     s, length = int(idx[0]), len(idx)
     if int(idx[-1]) - s + 1 != length:
-        raise ValueError("gesture span is not contiguous")
+        raise ValueError("The gesture span of the recording is not contiguous.")
     return label, s, length
 
 
 def window_classes(row: np.ndarray) -> list[tuple[int, int]]:
-    """(start, class) for every gesture and no-gesture window of one recording; excluded windows are omitted."""
+    """Return (start, class) for every gesture and no-gesture window of one recording. Excluded windows are left out."""
     label, s, length = gesture_span(row)
     if label not in CLASS_MAP:
-        raise ValueError(f"label {label} is not in CLASS_MAP")
+        raise ValueError(f"The label {label} is not in CLASS_MAP, so it has no class number.")
     gesture_cls = CLASS_MAP[label]
     ext_lo, ext_hi = max(0, s - PRE), s + length - 1
     far_lo, far_hi = s - PRE - GUARD, s + length - 1 + GUARD
@@ -92,7 +98,7 @@ def _split_of_user(splits: dict, user: int) -> str:
     for split in ("train", "val", "test"):
         if name in splits.get(split, []):
             return split
-    raise ValueError(f"{name} is in no split")
+    raise ValueError(f"{name} is not listed in any split of splits.json.")
 
 
 def _cache_members(cache_dir: Path, splits: dict, nominal_only: bool, complete: bool) -> list[CacheMember]:
@@ -102,7 +108,10 @@ def _cache_members(cache_dir: Path, splits: dict, nominal_only: bool, complete: 
             continue
         user = int(entry["user"])
         if user in TEST_USERS:
-            raise PermissionError(f"{stem}: user{user} is a test user and may not be loaded before Week 11")
+            raise PermissionError(
+                f"The cache member {stem} belongs to the test user user{user}, who may not be loaded before Week 11. "
+                "Remove this member from the cache index."
+            )
         split = _split_of_user(splits, user)
         is_complete = (
             entry["status"] == "complete"
@@ -115,17 +124,20 @@ def _cache_members(cache_dir: Path, splits: dict, nominal_only: bool, complete: 
 
 
 def load_complete_members(cache_dir: str | Path, splits: dict, nominal_only: bool = True) -> list[CacheMember]:
-    """Members whose index status is "complete" and whose files exist, sorted by stem."""
+    """Return the members whose index status is "complete" and whose files exist, sorted by stem."""
     return _cache_members(Path(cache_dir), splits, nominal_only, complete=True)
 
 
 def incomplete_members(cache_dir: str | Path, splits: dict, nominal_only: bool = True) -> list[CacheMember]:
-    """Members listed in index.json that are not usable (violation, or files missing); never read by the loader."""
+    """Return the members listed in index.json that cannot be used because of a violation or missing files."""
     return _cache_members(Path(cache_dir), splits, nominal_only, complete=False)
 
 
 def index_digest(members: list[CacheMember]) -> str:
-    """sha256 (first 16 hex) of the index entries of exactly these members, so it is stable while other members build."""
+    """Return the first 16 hex digits of the SHA-256 hash of the index entries of exactly these members.
+
+    The hash stays the same while other members are still being built.
+    """
     payload = json.dumps({m.stem: m.entry for m in sorted(members, key=lambda m: m.stem)}, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
@@ -141,7 +153,7 @@ class WindowIndex:
 
 
 def build_window_index(cache_dir: str | Path, members: list[CacheMember]) -> WindowIndex:
-    """Window rows from the targets files only; frames are never touched."""
+    """Build the window rows from the targets files only. The frames are never touched."""
     cache_dir = Path(cache_dir)
     chunks = []
     for member_id, m in enumerate(members):
@@ -155,7 +167,10 @@ def build_window_index(cache_dir: str | Path, members: list[CacheMember]) -> Win
 
 
 class CacheReader:
-    """Memory-mapped frames, opened lazily per member; only the requested slice is copied into memory."""
+    """Read frames through memory-mapped files, which are opened lazily for each member.
+
+    Only the requested slice is copied into memory.
+    """
 
     def __init__(self, cache_dir: str | Path, members: list[CacheMember]):
         self._dir = Path(cache_dir)
@@ -168,17 +183,17 @@ class CacheReader:
         return self._maps[member]
 
     def recording(self, member: int, recording: int) -> np.ndarray:
-        """(100, 3, 32, 32) float16."""
+        """Return one recording as a float16 array of shape (100, 3, 32, 32)."""
         return np.array(self._map(member)[recording])
 
     def window(self, row) -> np.ndarray:
-        """(32, 3, 32, 32) float16 for one WindowIndex row."""
+        """Return the window of one WindowIndex row as a float16 array of shape (32, 3, 32, 32)."""
         start = int(row["start"])
         return np.array(self._map(int(row["member"]))[int(row["recording"]), start : start + WINDOW])
 
 
 def count_table(wi: WindowIndex) -> dict[str, list[int]]:
-    """split -> window count per class."""
+    """Count the windows of each class and return them as a list per split."""
     return {
         split: np.bincount(wi.split_rows(split)["cls"], minlength=N_CLASSES).tolist()
         for split in ("train", "val")
@@ -186,7 +201,7 @@ def count_table(wi: WindowIndex) -> dict[str, list[int]]:
 
 
 def no_gesture_recording_share(wi: WindowIndex, split: str) -> float:
-    """Fraction of the split's recordings that contribute at least one no-gesture window."""
+    """Return the fraction of the split's recordings that contribute at least one no-gesture window."""
     ids = [i for i, m in enumerate(wi.members) if m.split == split]
     total = sum(wi.members[i].entry["n"] for i in ids)
     rows = wi.split_rows(split)
@@ -200,21 +215,30 @@ def scarcity_warnings(counts: dict[str, list[int]]) -> list[str]:
     for split, c in counts.items():
         gestures = [n for n in c[1:] if n > 0]
         if c[0] == 0:
-            out.append(f"{split}: NO no-gesture windows")
+            out.append(
+                f"The {split} split has no windows of the no-gesture class, so the model cannot learn it. "
+                "Check the window rules in docs/project-rules.md before training."
+            )
         elif gestures and c[0] < min(gestures):
-            out.append(f"{split}: no-gesture windows ({c[0]}) are fewer than the smallest gesture class ({min(gestures)})")
+            out.append(
+                f"The {split} split has only {c[0]} no-gesture windows, which is fewer than the smallest gesture "
+                f"class ({min(gestures)}). The no-gesture class may be under-represented."
+            )
     return out
 
 
 def user_balanced_weights(users: np.ndarray) -> np.ndarray:
-    """Per-sample weights so every user has the same total weight (mean weight 1)."""
+    """Return per-sample weights that give every user the same total weight. The mean weight is 1."""
     _, inverse, counts = np.unique(users, return_inverse=True, return_counts=True)
     w = 1.0 / counts[inverse]
     return w * (len(users) / w.sum())
 
 
 class BalancedUserSampler:
-    """Each epoch draws the same number of windows from every user (default: the smallest user's count)."""
+    """Draw the same number of windows from every user in each epoch.
+
+    By default the number equals the window count of the smallest user.
+    """
 
     def __init__(self, users: np.ndarray, per_user: int | None = None, seed: int = 0):
         self._by_user = {int(u): np.flatnonzero(users == u) for u in np.unique(users)}

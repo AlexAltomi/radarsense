@@ -107,7 +107,7 @@ def test_open_recordings_gives_targets_up_front_then_streams_inputs(synthetic_zi
     zip_path, originals = synthetic_zip
     inputs, targets = originals["user4_e1"]
     with open_recordings(zip_path, "fulldataset/user4_e1.npz") as (t, recordings):
-        assert np.array_equal(t, targets)  # available before any recording is read
+        assert np.array_equal(t, targets)  # The targets are available before any recording is read.
         out = list(recordings)
     assert len(out) == N_REC
     assert all(np.array_equal(rec, inputs[i]) for i, rec in enumerate(out))

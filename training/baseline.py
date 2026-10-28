@@ -1,10 +1,12 @@
-"""Week 3 baseline: hand-crafted window features + LogisticRegression / RandomForest.
+"""Train the Week 3 baseline: hand-crafted window features with a logistic regression and a random forest.
 
 Usage: python training/baseline.py [--cache DIR] [--splits FILE] [--out FILE] [--counts-only]
-Trains on the train users' nominal windows, evaluates on the val users (user3, user5) only. Test users are refused by
-the loader and never referenced here. Reads only cache members whose index.json status is "complete".
-Window rules and the class map live in dsp/radarsense_dsp/windows.py. Exit 2: a train/val user has no complete member.
-Every reported number is stamped with the git commit, the model version and the cache index hash.
+
+The script trains on the nominal windows of the train users and evaluates on the validation users user3 and user5
+only. The loader refuses the test users, and this script never refers to them. It reads only cache members whose
+status in index.json is "complete". The window rules and the class map are defined in
+dsp/radarsense_dsp/windows.py. The exit code is 2 if a train or validation user has no complete member. Every
+reported number is stamped with the git commit, the model version and a hash of the cache index.
 """
 import argparse
 import itertools
@@ -52,11 +54,12 @@ MODEL_VERSIONS = ("baseline-lr-v1", "baseline-rf-v1")
 
 
 def frame_series(rec: np.ndarray) -> np.ndarray:
-    """(frames, 3, 32, 32) -> (5, frames): range centroid, signed Doppler centroid, energy, axis A, axis B.
+    """Turn frames of shape (frames, 3, 32, 32) into five time series of shape (5, frames).
 
-    Centroids are weighted by ch0 (scaled magnitude). ch1/ch2 are already weighted by ch0, so their sum over
-    ch0's sum is the magnitude-weighted mean of sin(delta phi). Layout per frame is [channel, range, Doppler];
-    Doppler bin 16 is zero Doppler (fftshift).
+    The series are the range centroid, the signed Doppler centroid, the energy, axis A and axis B. A centroid is
+    the mean bin weighted by channel 0, which is the scaled magnitude. Channels 1 and 2 are already weighted by
+    channel 0, so their sum divided by the sum of channel 0 is the magnitude-weighted mean of sin(delta phi). The
+    layout of a frame is [channel, range, Doppler], and Doppler bin 16 is zero Doppler because of the fftshift.
     """
     f = rec.astype(np.float32)
     ch0 = f[:, 0]
@@ -72,7 +75,11 @@ def frame_series(rec: np.ndarray) -> np.ndarray:
 
 
 def window_stats(segs: np.ndarray) -> np.ndarray:
-    """(W, 5, T) -> (W, 30): mean, min, max, least-squares slope, argmax, argmin time per series (FEATURE_NAMES)."""
+    """Summarize windows of shape (W, 5, T) as features of shape (W, 30).
+
+    For each of the five series the features are the mean, minimum, maximum, least-squares slope, and the time of the
+    maximum and of the minimum. The order follows FEATURE_NAMES.
+    """
     t = np.arange(segs.shape[-1], dtype=np.float32)
     t -= t.mean()
     mean = segs.mean(axis=-1)
@@ -82,7 +89,10 @@ def window_stats(segs: np.ndarray) -> np.ndarray:
 
 
 def extract_features(reader: CacheReader, rows: np.ndarray) -> np.ndarray:
-    """(len(rows), 30); each recording is read once and all its windows share the per-frame series."""
+    """Return the features of all window rows as an array of shape (len(rows), 30).
+
+    Each recording is read once, and all of its windows share the per-frame series.
+    """
     X = np.empty((len(rows), len(FEATURE_NAMES)), dtype=np.float32)
     if len(rows) == 0:
         return X
@@ -99,9 +109,9 @@ def extract_features(reader: CacheReader, rows: np.ndarray) -> np.ndarray:
 
 
 def sample_weights(users: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """User-balanced weights, rescaled per class so every present class has equal total weight.
+    """Return user-balanced weights, rescaled so that every present class has the same total weight.
 
-    Class totals are exact; user totals are only approximately equal after the class rescaling.
+    The class totals are exact. After the class rescaling the user totals are only approximately equal.
     """
     w = user_balanced_weights(users)
     totals = np.bincount(y, weights=w, minlength=N_CLASSES)
@@ -126,7 +136,10 @@ def fit(model, X, y, w) -> None:
 
 
 def evaluate(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
-    """Accuracy, macro-F1 over the classes present in y_true, per-class recall (None if absent) and the confusion matrix."""
+    """Return the accuracy, the macro-F1, the per-class recall and the confusion matrix.
+
+    The macro-F1 averages over the classes that occur in y_true. The recall of a class that does not occur is None.
+    """
     cm = np.zeros((N_CLASSES, N_CLASSES), dtype=int)
     np.add.at(cm, (y_true, y_pred), 1)
     support, predicted, tp = cm.sum(axis=1), cm.sum(axis=0), np.diag(cm)
@@ -172,33 +185,37 @@ def report_markdown(
     shape: dict,
 ) -> str:
     out = ["# Baseline: hand-crafted window features", ""]
-    out += [f"Stamp: {stamp}", ""]
-    out += ["Train users: nominal files of the train split; evaluation: val users only (nominal). Test users are never loaded.", ""]
-    class_map_note = "single definition in `dsp/radarsense_dsp/windows.py`; gesture names are UNVERIFIED"
-    out += ["## Class map", "", f"`{class_map_json()}` ({class_map_note})", ""]
+    out += [f"This report was produced at {stamp}.", ""]
+    out += [
+        ("The model is trained on the nominal files of the train users and evaluated on the nominal files of the "
+        "validation users only. Test users are never loaded."),
+        "",
+    ]
+    class_map_note = "The mapping is defined only in `dsp/radarsense_dsp/windows.py`. Not yet verified: the real gesture names."
+    out += ["## Class map", "", f"`{class_map_json()}`. {class_map_note}", ""]
     out += [f"## Window counts ({stamp})", ""] + counts_markdown(counts, wi) + [""]
     if warnings:
         out += ["**Warnings**", ""] + [f"- {w}" for w in warnings] + [""]
     out += [f"## Cache members used ({stamp})", ""]
     out += [f"- {m.stem} ({m.split}, n={m.entry['n']})" for m in members]
     if skipped:
-        out += ["", "Listed in index.json but NOT complete, not read:"] + [f"- {m.stem} ({m.entry['status']})" for m in skipped]
+        out += ["", "These members are listed in index.json but are not complete, so they were not read:"] + [f"- {m.stem} ({m.entry['status']})" for m in skipped]
     features = f"{len(FEATURE_NAMES)} per window ({', '.join(SERIES)} x {', '.join(STATS)})"
-    out += ["", f"Features: {features}; train windows {shape['train']}, val windows {shape['val']}.", ""]
+    out += ["", f"Features: {features}. The report uses {shape['train']} train windows and {shape['val']} validation windows.", ""]
     for version, r in results.items():
         s = f"{stamp} · model `{version}`"
-        out += [f"## {version}", "", f"Stamp: {s}", ""]
+        out += [f"## {version}", "", f"These results were produced at {s}.", ""]
         out += [f"- overall accuracy: {r['accuracy']:.4f}", f"- macro-F1 (classes present in val): {r['macro_f1']:.4f}", ""]
-        out += [f"Per-class recall ({s})", "", "| class | recall | val windows |", "|---|---|---|"]
+        out += [f"Per-class recall ({s}):", "", "| class | recall | val windows |", "|---|---|---|"]
         for c in range(N_CLASSES):
             rec = "n/a" if r["recall"][c] is None else f"{r['recall'][c]:.4f}"
             out.append(f"| {cls_label(c)} | {rec} | {r['support'][c]} |")
-        out += ["", f"Confusion matrix, rows = true, columns = predicted ({s})", ""]
+        out += ["", f"Confusion matrix with the true class in the rows and the predicted class in the columns ({s}):", ""]
         out.append("| true \\ pred | " + " | ".join(cls_label(c) for c in range(N_CLASSES)) + " |")
         out.append("|" + "---|" * (N_CLASSES + 1))
         for c in range(N_CLASSES):
             out.append(f"| {cls_label(c)} | " + " | ".join(str(n) for n in r["confusion"][c]) + " |")
-        out += ["", f"Per-val-user accuracy ({s})", "", "| user | accuracy | windows |", "|---|---|---|"]
+        out += ["", f"Accuracy for each validation user ({s}):", "", "| user | accuracy | windows |", "|---|---|---|"]
         out += [f"| user{u} | {acc:.4f} | {n} |" for u, (acc, n) in sorted(r["per_user"].items())]
         out.append("")
     return "\n".join(out)
@@ -206,10 +223,10 @@ def report_markdown(
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cache", type=Path, default=CACHE)
-    ap.add_argument("--splits", type=Path, default=SPLITS)
-    ap.add_argument("--out", type=Path, default=OUT)
-    ap.add_argument("--counts-only", action="store_true", help="print window counts and warnings, train nothing")
+    ap.add_argument("--cache", type=Path, default=CACHE, help="directory of the processed cache")
+    ap.add_argument("--splits", type=Path, default=SPLITS, help="the frozen split file")
+    ap.add_argument("--out", type=Path, default=OUT, help="markdown file for the results")
+    ap.add_argument("--counts-only", action="store_true", help="only print the window counts and warnings, and train nothing")
     args = ap.parse_args(argv)
 
     splits = load_splits(args.splits)
@@ -221,17 +238,21 @@ def main(argv: list[str] | None = None) -> int:
     warnings = scarcity_warnings(counts)
     stamp = f"commit `{build_commit()}` · cache `{digest}`"
 
-    print(f"{stamp}; {len(members)} complete members, {len(skipped)} listed but not complete")
+    print(f"Report stamp: {stamp}. Using {len(members)} complete members. {len(skipped)} members are listed but not complete.")
     print("\n".join(counts_markdown(counts, wi)))
     for w in warnings:
         print(f"WARNING: {w}")
     for m in skipped:
-        print(f"WARNING: {m.stem} is {m.entry['status']}, not read")
+        print(f"WARNING: {m.stem} has status {m.entry['status']} in the cache index, so it was not read.")
 
     expected = {int(u.removeprefix("user")) for split in ("train", "val") for u in splits[split]}
     missing = sorted(expected - {m.user for m in members})
     if missing:
-        print(f"{'WARNING' if args.counts_only else 'ERROR'}: no complete member for users {missing}", file=sys.stderr)
+        print(
+            f"{'WARNING' if args.counts_only else 'ERROR'}: The cache has no complete member for the users {missing}. "
+            "Wait until the cache build has finished, then run this script again.",
+            file=sys.stderr,
+        )
         if not args.counts_only:
             return 2
     if args.counts_only:
@@ -248,12 +269,12 @@ def main(argv: list[str] | None = None) -> int:
         fit(model, X_train, y_train, w_train)
         pred = model.predict(X_val).astype(int)
         results[version] = evaluate(y_val, pred) | {"per_user": per_user_accuracy(val_rows["user"], y_val, pred)}
-        print(f"{version}: accuracy {results[version]['accuracy']:.4f}, macro-F1 {results[version]['macro_f1']:.4f}")
+        print(f"Model {version}: accuracy {results[version]['accuracy']:.4f}, macro-F1 {results[version]['macro_f1']:.4f}.")
 
     shape = {"train": len(train_rows), "val": len(val_rows)}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(report_markdown(stamp, members, skipped, wi, counts, warnings, results, shape), encoding="utf-8")
-    print(f"wrote {args.out}")
+    print(f"Wrote {args.out}.")
     return 0
 
 

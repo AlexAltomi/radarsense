@@ -1,3 +1,2 @@
 scripts/pre-commit text eol=lf
 *.sh text eol=lf
-scripts/commit-msg text eol=lf

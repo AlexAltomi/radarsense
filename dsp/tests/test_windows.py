@@ -50,11 +50,11 @@ def test_stride_and_window_fit_in_100_frames():
 @pytest.mark.parametrize(
     "s, length, gesture, none",
     [
-        (40, 8, [16, 20, 24, 28], [60, 64, 68]),  # middle
-        (21, 8, [0, 4, 8], list(range(40, 69, 4))),  # near the start
-        (5, 8, [0], list(range(24, 69, 4))),  # s < 10: extended span clipped at frame 0
-        (60, 10, [40, 44, 48], [0, 4, 8]),  # 10-frame span
-        (88, 8, [64, 68], list(range(0, 37, 4))),  # at the end
+        (40, 8, [16, 20, 24, 28], [60, 64, 68]),  # The gesture is in the middle.
+        (21, 8, [0, 4, 8], list(range(40, 69, 4))),  # The gesture is near the start.
+        (5, 8, [0], list(range(24, 69, 4))),  # The gesture starts before frame 10, so the extended span is clipped at frame 0.
+        (60, 10, [40, 44, 48], [0, 4, 8]),  # The span has 10 frames.
+        (88, 8, [64, 68], list(range(0, 37, 4))),  # The gesture is at the end.
     ],
 )
 def test_window_sets_hand_computed(s, length, gesture, none):
@@ -69,9 +69,9 @@ def test_partial_overlap_windows_are_excluded_and_never_no_gesture():
     excluded = [w for w in windows.window_starts() if w not in labelled]
     assert excluded == [0, 4, 8, 12] + list(range(32, 57, 4))
     for w, cls in labelled.items():
-        if cls == 0:  # >= 10 frames from the extended span [s-10, s+L-1]
+        if cls == 0:  # A no-gesture window is at least 10 frames away from the extended span [s-10, s+L-1].
             assert w + 31 < s - 20 or w > s + length + 9
-        else:  # contains the extended span fully
+        else:  # A gesture window contains the extended span completely.
             assert w <= s - 10 and w + 31 >= s + length - 1
 
 
@@ -119,11 +119,15 @@ def test_class_map_is_the_single_definition():
         assert classes == {cls}
 
 
-# --- synthetic cache ---------------------------------------------------------------------------------------------
+# Tests that use a synthetic cache.
 
 
 def make_cache(tmp_path, spec: dict[str, dict]):
-    """spec: stem -> {"user", "anomaly", "status" (default "complete"), "spans": [(label, s, L), ...], "files" (default True)}."""
+    """Write a synthetic cache from a spec.
+
+    The spec maps each stem to a dict with the keys "user", "anomaly", "status" (default "complete"), "spans" (a list of
+    (label, s, L) tuples) and "files" (default True).
+    """
     cache = tmp_path / "processed"
     cache.mkdir()
     index = {"version": 1, "files": {}}
@@ -135,8 +139,8 @@ def make_cache(tmp_path, spec: dict[str, dict]):
         if m.get("files", True) and entry["status"] == "complete":
             targets = np.stack([row(*sp) for sp in spans])
             frames = np.zeros((n, 100, 3, 32, 32), dtype=np.float16)
-            frames[:, :, 0, 0, 0] = np.arange(100) / 100  # frame number
-            frames[:, :, 1, 0, 0] = np.arange(n)[:, None]  # recording number
+            frames[:, :, 0, 0, 0] = np.arange(100) / 100  # This channel stores the frame number.
+            frames[:, :, 1, 0, 0] = np.arange(n)[:, None]  # This channel stores the recording number.
             np.save(cache / f"{stem}.targets.npy", targets)
             np.save(cache / f"{stem}.npy", frames)
     (cache / "index.json").write_text(json.dumps(index), encoding="utf-8")
@@ -155,7 +159,7 @@ def test_loader_keeps_only_complete_nominal_members_with_files(tmp_path):
     spec = spec_basic()
     spec["user1_e2"] = {"user": 1, "status": "violation", "spans": [(1, 40, 8)]}
     spec["user2_e1_fast"] = {"user": 2, "anomaly": "fast", "spans": [(1, 40, 8)]}
-    spec["user1_e3"] = {"user": 1, "spans": [(1, 40, 8)], "files": False}  # index says complete, files missing
+    spec["user1_e3"] = {"user": 1, "spans": [(1, 40, 8)], "files": False}  # The index says complete, but the files are missing.
     cache = make_cache(tmp_path, spec)
     stems = [m.stem for m in load_complete_members(cache, SPLITS)]
     assert stems == ["user1_e1", "user2_e1", "user3_e1"]
@@ -178,7 +182,7 @@ def test_window_index_and_counts(tmp_path):
     cache = make_cache(tmp_path, spec_basic())
     members = load_complete_members(cache, SPLITS)
     wi = build_window_index(cache, members)
-    # (1,40,8): 4 gesture + 3 none; (2,40,8): same; (6,60,10): 3 + 3; (3,40,8): 4 + 3
+    # The recordings (1,40,8), (2,40,8) and (3,40,8) give 4 gesture and 3 no-gesture windows each, and (6,60,10) gives 3 and 3.
     train = count_table(wi)["train"]
     assert train == [3 + 3 + 3 + 3, 4, 4, 4, 3, 0]
     val = count_table(wi)["val"]
@@ -191,7 +195,7 @@ def test_window_index_and_counts(tmp_path):
 
 def test_scarcity_warnings():
     assert scarcity_warnings({"train": [100, 50, 60, 70, 80, 90], "val": [10, 5, 5, 5, 5, 5]}) == []
-    assert "NO no-gesture" in scarcity_warnings({"train": [0, 5, 5, 5, 5, 5]})[0]
+    assert "has no windows of the no-gesture class" in scarcity_warnings({"train": [0, 5, 5, 5, 5, 5]})[0]
     assert "fewer" in scarcity_warnings({"val": [3, 5, 5, 5, 5, 5]})[0]
 
 
@@ -218,7 +222,7 @@ def test_mmap_reads_return_the_requested_slice(tmp_path):
     assert isinstance(reader._map(0), np.memmap)
 
 
-# --- balancing ---------------------------------------------------------------------------------------------------
+# Tests of the user balancing.
 
 
 def test_sampler_gives_each_user_the_same_count_every_epoch():
@@ -229,14 +233,14 @@ def test_sampler_gives_each_user_the_same_count_every_epoch():
         idx = s.epoch_indices(epoch)
         assert len(idx) == 300 and idx.min() >= 0 and idx.max() < len(users)
         assert {int(u): int((users[idx] == u).sum()) for u in (1, 2, 3)} == {1: 100, 2: 100, 3: 100}
-        assert len(set(idx.tolist())) == 300  # without replacement
+        assert len(set(idx.tolist())) == 300  # Windows are drawn without replacement.
 
 
 def test_sampler_is_deterministic_and_reshuffles_per_epoch():
     users = np.array([1] * 50 + [2] * 20)
     a, b = BalancedUserSampler(users, seed=7), BalancedUserSampler(users, seed=7)
     assert list(a) == list(b)
-    assert list(a) != list(b.epoch_indices(0).tolist())  # a is on epoch 1 now, b's epoch 0 is replayed
+    assert list(a) != list(b.epoch_indices(0).tolist())  # The sampler a is on epoch 1 now, while epoch 0 of b is replayed.
     assert not np.array_equal(a.epoch_indices(0), a.epoch_indices(1))
     assert not np.array_equal(BalancedUserSampler(users, seed=8).epoch_indices(0), a.epoch_indices(0))
 

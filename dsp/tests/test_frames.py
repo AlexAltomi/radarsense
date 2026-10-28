@@ -3,11 +3,11 @@ import pytest
 
 from radarsense_dsp.frames import magnitude_db, process_frames, range_doppler_spectra
 
-# A unit-amplitude tone peaks at |X| of about 244 (47.75 dB) after both windowed FFTs.
-DB_MIN, DB_MAX = 0.0, 60.0  # peak stays unclipped, so argmax is unambiguous
-DB_CLIP_MIN, DB_CLIP_MAX = 0.0, 40.0  # peak clipped to 1, so the phase weight is exactly 1
+# A tone with unit amplitude peaks at |X| of about 244 (47.75 dB) after both windowed FFTs.
+DB_MIN, DB_MAX = 0.0, 60.0  # The peak stays unclipped, so the position of the maximum is unambiguous.
+DB_CLIP_MIN, DB_CLIP_MAX = 0.0, 40.0  # The peak is clipped to 1, so the phase weight is exactly 1.
 PAIR_A, PAIR_B = (0, 1), (0, 2)
-ATOL = 2e-3  # a few float16 ulps for values in [0.5, 1]
+ATOL = 2e-3  # This tolerance is a few float16 steps for values between 0.5 and 1.
 
 
 def tone(k, d, phi=(0.0, 0.0, 0.0), amp=1.0):
@@ -28,7 +28,7 @@ def test_peak_lands_at_range_and_doppler_bin():
 
 def test_static_target_removed_and_moving_survives():
     moving = tone(10, 3)
-    both = moving + tone(20, 0, amp=5.0)  # the static one would be about 62 dB if it survived
+    both = moving + tone(20, 0, amp=5.0)  # The static tone would reach about 62 dB if the clutter removal did not suppress it.
     out_both, out_moving = run(both), run(moving)
     assert out_both[0, 20, 16] == 0
     assert np.unravel_index(np.argmax(out_both[0]), (32, 32)) == (10, 19)
@@ -51,7 +51,7 @@ def test_phase_channels_follow_pair_difference():
 
 def test_phase_channels_are_weighted_by_scaled_ch0():
     out = run(tone(10, 3, phi=(0.0, 0.5, 0.0)))
-    peak_mag = 0.5 * np.hanning(64).sum() * np.hanning(32).sum()  # unit cosine through both windowed FFTs
+    peak_mag = 0.5 * np.hanning(64).sum() * np.hanning(32).sum()  # This is the peak of a unit cosine after both windowed FFTs.
     w = 20 * np.log10(peak_mag) / (DB_MAX - DB_MIN)
     assert out[0][10, 19] == pytest.approx(w, abs=ATOL)
     assert out[1][10, 19] == pytest.approx(w * np.sin(0.5), abs=ATOL)
@@ -61,7 +61,7 @@ def test_spectra_phase_sign_and_shape():
     s = range_doppler_spectra(tone(10, 3, phi=(0.0, 0.5, -0.25)))
     assert s.shape == (3, 32, 32) and np.iscomplexobj(s)
     peak = (10, 19)
-    # delta_phi = angle(ant_b) - angle(ant_a)
+    # The phase difference is delta_phi = angle(ant_b) - angle(ant_a).
     assert np.angle(s[1][peak] * np.conj(s[0][peak])) == pytest.approx(0.5, abs=1e-3)
     assert np.angle(s[2][peak] * np.conj(s[0][peak])) == pytest.approx(-0.25, abs=1e-3)
 

@@ -1,9 +1,12 @@
-"""Label structure check, TRAIN USERS ONLY: per-recording labelled frames, start frame, run length, contiguity.
+"""Check how the labelled frames are arranged inside the recordings of two train members.
+
+For each recording the script counts the labelled frames, finds the start frame and the length of the gesture, and
+checks whether the gesture is one contiguous run.
 
 Usage: python training/label_structure.py
-Reads targets via io.read_meta (headers + targets only, never inputs data) for the members below and writes the
-`## Label structure (train users)` section of training/dataset_inventory.md, replacing any previous version.
-Output contains only counts.
+The script reads the targets with `io.read_meta`, which reads only headers and targets and never the inputs data. It
+writes the section "Label structure (train users)" of training/dataset_inventory.md and replaces any earlier version
+of that section. The output contains only counts.
 """
 import sys
 from pathlib import Path
@@ -15,7 +18,7 @@ from radarsense_dsp.io import read_meta
 from radarsense_dsp.labels import analyze_targets
 
 ZIP = ROOT / "data" / "radar_dataset.zip"
-MEMBERS = ["fulldataset/user4_e1.npz", "fulldataset/user9_e1.npz"]  # both train users
+MEMBERS = ["fulldataset/user4_e1.npz", "fulldataset/user9_e1.npz"]  # Both members belong to train users.
 OUT = ROOT / "training" / "dataset_inventory.md"
 HEADING = "## Label structure (train users)"
 
@@ -28,21 +31,21 @@ def render(stem: str, a: dict) -> list[str]:
     n_gesture = a["n"] - a["zero_gesture"]
     lines = [
         f"### {stem} (N={a['n']})",
-        f"- labelled frames per recording (`frames:recordings`): {fmt(a['labelled_hist'])}",
-        f"- recordings with zero gesture frames: {a['zero_gesture']}",
-        f"- recordings with more than one distinct gesture value: {a['multi_value']['count']}"
+        f"- Labelled frames per recording (`frames:recordings`): {fmt(a['labelled_hist'])}",
+        f"- Recordings with no gesture frames: {a['zero_gesture']}",
+        f"- Recordings with more than one distinct gesture value: {a['multi_value']['count']}"
         + (f" (first indices {a['multi_value']['first_indices']})" if a["multi_value"]["count"] else ""),
     ]
     s = a["start"]
     if s:
         lines.append(
-            f"- gesture start frame: min {s['min']}, median {s['median']:g}, max {s['max']}; "
-            f"10-frame bins (`bin_start:recordings`): {fmt(s['hist10'])}"
+            f"- Gesture start frame: minimum {s['min']}, median {s['median']:g}, maximum {s['max']}. "
+            f"Counts in 10-frame bins (`bin_start:recordings`): {fmt(s['hist10'])}"
         )
     lines += [
-        f"- gesture span, last - first + 1 (`frames:recordings`): {fmt(a['span_hist'])}",
-        f"- contiguous runs of labelled frames per recording (`runs:recordings`): {fmt(a['runs_hist'])}",
-        f"- contiguous (single run): {a['contiguous']} of {n_gesture} recordings with a gesture",
+        f"- Gesture span, which is the last labelled frame minus the first plus 1 (`frames:recordings`): {fmt(a['span_hist'])}",
+        f"- Contiguous runs of labelled frames per recording (`runs:recordings`): {fmt(a['runs_hist'])}",
+        f"- Recordings whose gesture is a single contiguous run: {a['contiguous']} of {n_gesture}.",
         "",
     ]
     return lines
@@ -62,7 +65,9 @@ def main() -> None:
     lines = [
         HEADING,
         "",
-        "Counts only. Gesture = any non-zero label. Start frame, span and runs cover recordings that contain a gesture.",
+        ("This section checks how the labelled frames are arranged inside the recordings of two train members, "
+        "user4_e1 and user9_e1. It reports counts only. A frame is a gesture frame if its label is not 0. The start "
+        "frame, span and run statistics cover only the recordings that contain a gesture."),
         "",
     ]
     for member in MEMBERS:
@@ -71,7 +76,7 @@ def main() -> None:
         lines += render(Path(member).stem, analyze_targets(targets))
     print("\n".join(lines))
     write_section(lines)
-    print(f"wrote {OUT}")
+    print(f"Wrote {OUT}.")
 
 
 if __name__ == "__main__":

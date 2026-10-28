@@ -48,7 +48,7 @@ def test_violation_is_skipped_recorded_and_exit_code_is_1(tmp_path, capsys):
     assert statuses(out) == {"user4_e1": "complete", "user9_e1_fast": "violation"}
     assert not (out / "user9_e1_fast.npy").exists()
     assert "user9_e1_fast" in capsys.readouterr().out
-    # a re-run keeps reporting the violation and does not touch the finished file
+    # A second run keeps reporting the violation and does not touch the finished file.
     assert main(["--zip", str(zip_path), "--out", str(out)]) == 1
 
 

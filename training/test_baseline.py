@@ -18,7 +18,7 @@ LABELS = [1, 2, 3, 6, 7]
 
 
 def make_recording(rng, label, s, length):
-    """Noise plus a blob in the labelled span whose range bin depends on the class."""
+    """Return a recording of noise plus a bright blob in the labelled span. The range bin of the blob depends on the class."""
     rec = rng.random((100, 3, 32, 32)).astype(np.float16) * 0.002
     r_bin = 3 + 5 * CLASS_MAP[label]
     rec[s : s + length, 0, r_bin, 16] = 1.0
@@ -43,7 +43,7 @@ def make_cache(tmp_path, extra=None):
     cache = tmp_path / "processed"
     cache.mkdir()
     index = {"version": 1, "files": {}}
-    write_member(cache, index, "user1_e1", 1, 10, rng)  # user1 dominates, as in the real train set
+    write_member(cache, index, "user1_e1", 1, 10, rng)  # User1 dominates, as in the real train set.
     write_member(cache, index, "user2_e1", 2, 5, rng)
     write_member(cache, index, "user3_e1", 3, 5, rng)
     write_member(cache, index, "user2_e2", 2, 5, rng, status="violation")
@@ -63,7 +63,7 @@ def test_frame_series_on_a_known_peak():
     rec[:, 2, 7, 20] = -0.25
     rc, dc, energy, a, b = baseline.frame_series(rec)
     assert rc == pytest.approx([7, 7, 7], abs=1e-3)
-    assert dc == pytest.approx([4, 4, 4], abs=1e-3)  # bin 20 is +4 from zero Doppler (bin 16)
+    assert dc == pytest.approx([4, 4, 4], abs=1e-3)  # Bin 20 is 4 bins above zero Doppler, which is bin 16.
     assert energy == pytest.approx([1, 1, 1], abs=1e-3)
     assert a == pytest.approx([0.5] * 3, abs=1e-3) and b == pytest.approx([-0.25] * 3, abs=1e-3)
 
@@ -96,7 +96,7 @@ def test_extract_features_matches_per_window_computation_in_any_row_order(tmp_pa
     rows = wi.rows[np.random.default_rng(1).permutation(len(wi.rows))[:40]]
     X = baseline.extract_features(reader, rows)
     for i in (0, 7, 39):
-        win = reader.window(rows[i])  # (32, 3, 32, 32)
+        win = reader.window(rows[i])  # The window has shape (32, 3, 32, 32).
         expected = baseline.window_stats(baseline.frame_series(win)[None])[0]
         assert X[i] == pytest.approx(expected, rel=1e-4, abs=1e-4)
 
@@ -109,7 +109,7 @@ def test_class_signal_is_visible_in_the_features(tmp_path):
     col = baseline.FEATURE_NAMES.index("range_centroid_mean")
     assert np.isfinite(X).all()
     by_class = [X[wi.rows["cls"] == c, col].mean() for c in range(1, 6)]
-    assert by_class == sorted(by_class)  # blob range bin grows with the class index
+    assert by_class == sorted(by_class)  # The range bin of the blob grows with the class index.
 
 
 def test_sample_weights_balance_users_then_classes():
@@ -117,7 +117,7 @@ def test_sample_weights_balance_users_then_classes():
     y = np.array(([1] * 30 + [2] * 30) + ([1] * 15 + [2] * 5))
     w = baseline.sample_weights(users, y)
     assert w[y == 1].sum() == pytest.approx(w[y == 2].sum())
-    assert w[users == 1].sum() / w.sum() < 0.6  # user 1 is 75% of the raw windows
+    assert w[users == 1].sum() / w.sum() < 0.6  # User 1 holds 75% of the raw windows.
 
 
 def test_evaluate_handles_absent_classes():
@@ -135,14 +135,14 @@ def test_main_end_to_end_writes_a_stamped_report_using_val_users_only(tmp_path, 
     members = load_complete_members(cache, SPLITS)
     digest = index_digest(members)
     assert digest in text and "commit `" in text
-    assert text.count(f"cache `{digest}`") >= 9  # counts, members and every table of both models
+    assert text.count(f"cache `{digest}`") >= 9  # The stamp appears in the counts, the members and every table of both models.
     for version in baseline.MODEL_VERSIONS:
         assert f"## {version}" in text and f"model `{version}`" in text
     assert "Confusion matrix" in text and "overall accuracy" in text and "macro-F1" in text
     assert "| user3 |" in text and "| user1 |" not in text and "| user2 |" not in text
     assert "user1_e1 (train" in text and "user3_e1 (val" in text
     assert "user1_e1_fast" not in text.split("## Cache members used")[1].split("Features:")[0]
-    assert "user2_e2 (violation)" in text  # listed as not read
+    assert "user2_e2 (violation)" in text  # The violation member is listed as not read.
     assert "0 recordings" not in capsys.readouterr().err
 
 
@@ -162,7 +162,7 @@ def test_counts_only_prints_counts_and_trains_nothing(tmp_path, capsys):
     assert baseline.main(["--cache", str(cache), "--splits", str(splits), "--out", str(out), "--counts-only"]) == 0
     printed = capsys.readouterr().out
     assert "| train |" in printed and "| val |" in printed and not out.exists()
-    assert "user2_e2 is violation, not read" in printed
+    assert "user2_e2 has status violation" in printed
 
 
 def test_test_users_are_refused(tmp_path):

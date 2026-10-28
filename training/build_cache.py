@@ -1,10 +1,13 @@
-"""Build the processed cache (data/processed) from the zip, one member at a time. Resumable.
+"""Build the processed cache in data/processed from the zip file, one member at a time. The build can be resumed.
 
 Usage: python training/build_cache.py [--nominal-only] [--only STEM] [--zip PATH] [--out DIR]
-Nominal members are processed first, then anomalous ones. user10/user12 are never included.
-A member with a span violation (not exactly one contiguous gesture per recording) is skipped and recorded in
-index.json with status "violation"; the run continues and exits 1 with a summary. Exit 2: stale constants.
-Downstream code must read a cached member only if its index status is "complete" (see dsp/radarsense_dsp/cache.py).
+
+Nominal members are processed first and anomalous members afterwards. The test users user10 and user12 are never
+included. A member with a span violation, which means that a recording does not contain exactly one contiguous
+gesture, is skipped and recorded in index.json with the status "violation". The run then continues with the other
+members and exits with code 1 and a summary. The exit code is 2 if a cached member was built with different DSP
+constants. Code that reads the cache must use a member only if its index status is "complete" (see
+dsp/radarsense_dsp/cache.py).
 """
 import argparse
 import shutil
@@ -48,56 +51,60 @@ def existing_parent(path: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--nominal-only", action="store_true", help="skip the anomalous (fast/slow/wrist) members")
-    ap.add_argument("--only", metavar="STEM", help="build just this member, e.g. user4_e1")
-    ap.add_argument("--zip", type=Path, default=ZIP)
-    ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--nominal-only", action="store_true", help="skip the anomalous members (fast, slow and wrist)")
+    ap.add_argument("--only", metavar="STEM", help="build only this member, given as a stem such as user4_e1")
+    ap.add_argument("--zip", type=Path, default=ZIP, help="the dataset zip file")
+    ap.add_argument("--out", type=Path, default=OUT, help="the cache directory")
     args = ap.parse_args(argv)
 
     members = plan_members(list_members(args.zip), args.nominal_only)
     if args.only:
         members = [m for m in members if Path(m.name).stem == args.only]
         if not members:
-            sys.exit(f"{args.only!r} is not a cacheable member (unknown, a test user, or excluded by --nominal-only)")
+            sys.exit(f"{args.only!r} is not a cacheable member. It is unknown, belongs to a test user, or is excluded by --nominal-only.")
 
     constants = load_constants()
     known = load_index(args.out)["files"]
     pending = [m for m in members if Path(m.name).stem not in known]
     need = estimate_cache_bytes(args.zip, pending)
     free = shutil.disk_usage(existing_parent(args.out)).free
-    print(f"{len(members)} members, {len(pending)} not yet cached; need about {need / 1e9:.1f} GB, "
-          f"{free / 1e9:.1f} GB free", flush=True)
+    print(f"The plan has {len(members)} members, and {len(pending)} of them are not yet cached. About "
+          f"{need / 1e9:.1f} GB of disk space are needed, and {free / 1e9:.1f} GB are free.", flush=True)
     if free < HEADROOM * need:
-        sys.exit("not enough free disk space")
+        sys.exit("There is not enough free disk space for the cache. Free some space or choose another --out directory.")
     commit = build_commit()
 
     built, skipped, violations = [], [], []
     for i, m in enumerate(members, 1):
         stem = Path(m.name).stem
-        print(f"[{i}/{len(members)}] {stem}: ", end="", flush=True)
+        print(f"Member {i} of {len(members)}: starting {stem}.", flush=True)
         t0 = time.perf_counter()
         try:
             result = build_file(args.zip, m, args.out, constants, commit)
         except StaleConstantsError as e:
-            print("STALE CONSTANTS")
+            print("Stopped: this member was cached with different DSP constants.")
             print(e, file=sys.stderr)
             return 2
         entry = result.entry
         if result.outcome == "built":
             built.append(stem)
-            print(f"built {entry['n']} recordings in {time.perf_counter() - t0:.0f} s", flush=True)
+            print(f"Built {stem} with {entry['n']} recordings in {time.perf_counter() - t0:.0f} s.", flush=True)
         elif result.outcome == "skipped":
             skipped.append(stem)
-            print("already complete, skipped", flush=True)
+            print(f"{stem} is already complete and was skipped.", flush=True)
         else:
             violations.append((stem, entry["violations"]))
-            print(f"SPAN VIOLATION {entry['violations']['kinds']}, first {entry['violations']['first']}", flush=True)
+            print(
+                f"{stem} has span violations {entry['violations']['kinds']}, and the first ones are "
+                f"{entry['violations']['first']}. The member was not cached.",
+                flush=True,
+            )
 
-    print(f"\nsummary: built {len(built)}, skipped {len(skipped)}, span violations {len(violations)}")
+    print(f"\nSummary: built {len(built)}, skipped {len(skipped)}, members with span violations {len(violations)}.")
     for stem, v in violations:
-        print(f"  VIOLATION {stem}: {v['count']} recordings {v['kinds']}, first {v['first']}")
+        print(f"  {stem} has {v['count']} recordings with violations {v['kinds']}, and the first ones are {v['first']}.")
     if violations:
-        print("violating members are NOT cached (index status 'violation'); downstream must not read them")
+        print("Members with violations are not cached. Their index status is 'violation', and downstream code must not read them.")
     return 1 if violations else 0
 
 

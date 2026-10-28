@@ -1,14 +1,22 @@
-"""Label/antenna inference, EXPLORATORY, TRAIN USERS ONLY (user2, user4, user9, user11; e1 nominal).
+"""Explore which antenna pair each gesture label moves along. This is an exploratory analysis.
+
+It reads only the nominal e1 files of the train users user2, user4, user9 and user11.
 
 Usage: python training/infer_labels_antennas.py
-Streams each file one recording at a time and keeps up to KEEP recordings per label value (stops reading a file
-once every label has KEEP). Per recording, frames are aligned to the labelled span start (offsets -PRE..+POST).
-Per frame, at the strongest cell of the unclipped antenna-averaged dB map, it records:
-  range bin; energy-weighted mean Doppler bin (signed, bin - 16; weights = power of cells within REL_DB of the peak);
-  unit phasor of delta_phi = angle(X_b) - angle(X_a) for the pairs (0,1), (0,2), (1,2).
-Writes training/figures/label_antenna_inference.png and the `## Label/antenna inference (exploratory)` section of
-training/dataset_inventory.md (counts and averages only). Does not write constants.json.
-The dB percentiles it prints are for orientation only.
+The script streams each file one recording at a time and keeps up to KEEP recordings per label value. It stops
+reading a file as soon as every label has KEEP recordings. In each kept recording the frames are aligned to the
+start of the labelled span, with offsets from -PRE to +POST. For every frame the script looks at the strongest cell of
+the unclipped dB map, which is averaged over the antennas, and records three things:
+
+  The range bin of that cell.
+  The Doppler bin, which is the signed bin (bin - 16) averaged over the cells within REL_DB of the peak and weighted
+  by the power of the cells.
+  The unit phasor of the phase difference delta_phi = angle(X_b) - angle(X_a) for the antenna pairs (0,1), (0,2) and
+  (1,2).
+
+The script writes the figure training/figures/label_antenna_inference.png and the section "Label and antenna
+inference (exploratory)" of training/dataset_inventory.md. That section contains counts and averages only. The script
+does not write constants.json, and the dB percentiles it reports are for orientation only.
 """
 import sys
 from pathlib import Path
@@ -22,7 +30,7 @@ from radarsense_dsp.frames import magnitude_db, range_doppler_spectra
 from radarsense_dsp.io import iter_recordings
 
 ZIP = ROOT / "data" / "radar_dataset.zip"
-USERS = (2, 4, 9, 11)  # train users only
+USERS = (2, 4, 9, 11)  # Only train users are analyzed.
 LABELS = (1, 2, 3, 6, 7)
 PAIRS = ((0, 1), (0, 2), (1, 2))
 KEEP = 40
@@ -31,11 +39,11 @@ REL_DB = 20.0
 OFFSETS = np.arange(-PRE, POST + 1)
 FIG = ROOT / "training" / "figures" / "label_antenna_inference.png"
 OUT = ROOT / "training" / "dataset_inventory.md"
-HEADING = "## Label/antenna inference (exploratory)"
+HEADING = "## Label and antenna inference (exploratory)"
 
 
 def window_features(spectra: np.ndarray, start: int, length: int) -> dict:
-    """Features for frames start-PRE .. start+POST of one recording; spectra is (frames, 3, range, Doppler)."""
+    """Return the features of frames start-PRE to start+POST of one recording. The spectra have shape (frames, 3, range, Doppler)."""
     w = spectra[start - PRE : start + POST + 1]
     n = len(w)
     db = magnitude_db(w)
@@ -51,7 +59,7 @@ def window_features(spectra: np.ndarray, start: int, length: int) -> dict:
     for a, b in PAIRS:
         z = w[frames, b, r, d] * np.conj(w[frames, a, r, d])
         phasors.append(z / (np.abs(z) + 1e-30))
-    phasors = np.stack(phasors)  # (3, n)
+    phasors = np.stack(phasors)  # Shape: (3, n).
     gesture = np.unwrap(np.angle(phasors[:, PRE : PRE + length]), axis=1)
     slopes = np.array([np.polyfit(np.arange(length), g, 1)[0] for g in gesture])
     return {"range": r.astype(float), "doppler": doppler, "phasors": phasors, "slopes": slopes}
@@ -73,7 +81,7 @@ def collect(member: str) -> tuple[dict[int, list[dict]], np.ndarray, int, int]:
             or nz[0] - PRE < 0
             or nz[0] + POST + 1 > len(raw)
         ):
-            skipped += 1  # no gesture, unexpected label, several values, split span, or window outside the recording
+            skipped += 1  # Skip recordings without a gesture, with an unexpected label, with several values, with a split span, or whose window leaves the recording.
             continue
         if len(kept[label]) >= KEEP:
             continue
@@ -87,7 +95,7 @@ def collect(member: str) -> tuple[dict[int, list[dict]], np.ndarray, int, int]:
 
 
 def mean_phase_curve(phasors: list[np.ndarray]) -> np.ndarray:
-    """Circular mean over recordings, unwrapped outwards from offset 0: delta_phi(t) - delta_phi(0), shape (3, n)."""
+    """Return the circular mean of the phasors over the recordings as delta_phi(t) - delta_phi(0), unwrapped outwards from offset 0. The shape is (3, n)."""
     angle = np.angle(np.mean(phasors, axis=0))
     curve = np.zeros_like(angle)
     fwd = np.unwrap(angle[:, PRE:], axis=1)
@@ -100,9 +108,9 @@ def mean_phase_curve(phasors: list[np.ndarray]) -> np.ndarray:
 def slope_tables(data: dict[int, dict[int, list[dict]]]) -> list[str]:
     lines = []
     for p, (a, b) in enumerate(PAIRS):
-        title = f"Mean slope of delta_phi = angle(ant{b}) - angle(ant{a}) over the labelled span, rad/frame"
+        title = f"Mean slope of the phase difference delta_phi = angle(ant{b}) - angle(ant{a}) over the labelled span, in rad/frame"
         lines += [
-            f"{title} (share of recordings with positive slope):",
+            f"{title}. Brackets show the share of recordings with a positive slope.",
             "",
             "| label | " + " | ".join(f"user{u}" for u in USERS) + " | all |",
             "|---|" + "---|" * (len(USERS) + 1),
@@ -169,13 +177,13 @@ def main() -> None:
     data: dict[int, dict[int, list[dict]]] = {}
     notes = []
     for u in USERS:
-        print(f"user{u}_e1: streaming...", flush=True)
+        print(f"Reading user{u}_e1 one recording at a time.", flush=True)
         kept, pct, n_read, skipped = collect(f"fulldataset/user{u}_e1.npz")
         data[u] = kept
         counts = " ".join(f"{label}:{len(kept[label])}" for label in LABELS)
         note = (
-            f"user{u}_e1: read {n_read} recordings, kept per label `{counts}`, skipped {skipped}; "
-            f"raw dB 1st/99.5th percentile {pct[0]:.1f}/{pct[1]:.1f}"
+            f"user{u}_e1: read {n_read} recordings, kept per label `{counts}`, skipped {skipped}. "
+            f"The 1st and 99.5th percentiles of the raw dB values are {pct[0]:.1f} and {pct[1]:.1f}."
         )
         print(note, flush=True)
         notes.append(f"- {note}")
@@ -183,19 +191,22 @@ def main() -> None:
     tables = slope_tables(data)
     print("\n".join(tables))
     plot(data)
-    print(f"figure: {FIG}")
+    print(f"Wrote the figure {FIG}.")
     users = ", ".join(f"user{u}" for u in USERS)
     intro = (
-        f"Train users {users}, e1 nominal; up to {KEEP} recordings per label, frames aligned to the labelled span "
-        f"start. Strongest cell of the unclipped dB map; Doppler is the signed bin (bin - 16), energy-weighted over "
-        f"cells within {REL_DB:g} dB of the peak. Figure: `training/figures/label_antenna_inference.png`. "
-        f"Percentiles are for orientation, not constants. Timing finding: in the figure the phase change falls "
-        f"inside the labelled span for user2/user4 but about 8 frames before the span start for user9/user11, i.e. "
-        f"users 9/11 are labelled ~8 frames after the motion. The slope tables below are taken over the labelled "
-        f"span, so they are not comparable between these two groups; compare the figure instead."
+        f"This section looks for the antenna pair and the sweep direction that belong to each label. It uses only "
+        f"the nominal e1 files of the train users {users}, and up to {KEEP} recordings per label, with all frames "
+        f"aligned to the start of the labelled span. In every frame it takes the strongest cell of the unclipped dB "
+        f"map. The Doppler value is the signed bin (bin - 16), averaged over the cells within {REL_DB:g} dB of the "
+        f"peak and weighted by their energy. The figure is `training/figures/label_antenna_inference.png`. The dB "
+        f"percentiles are for orientation only and are not used as constants. In the figure the phase change falls "
+        f"inside the labelled span for user2 and user4, but about 8 frames before the span start for user9 and "
+        f"user11. Users 9 and 11 therefore label the gesture about 8 frames after the motion. The slope tables "
+        f"below are taken over the labelled span, so they cannot be compared between these two groups. Compare the "
+        f"figure instead."
     )
     write_section([HEADING, "", intro, "", *notes, "", *tables])
-    print(f"wrote {OUT}")
+    print(f"Wrote {OUT}.")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 """Streaming access to the radar_dataset zip, one recording at a time.
 
-Never extracts the zip and never loads a whole `inputs` array (CLAUDE.md hard rules 1 and 6).
+This module never extracts the zip file and never loads a whole `inputs` array into memory. It also refuses to open
+the test users (user10 and user12) unless the environment variable RADARSENSE_ALLOW_TEST is set to 1. Both rules are
+described in docs/project-rules.md under "Data rules".
 """
 import os
 import re
@@ -30,12 +32,12 @@ class Member:
 def parse_member(name: str) -> Member:
     m = _NAME_RE.match(name)
     if m is None:
-        raise ValueError(f"not a radar_dataset member name: {name!r}")
+        raise ValueError(f"{name!r} is not a radar_dataset member name. Expected a name like 'fulldataset/user1_e1.npz'.")
     return Member(name, int(m[1]), int(m[2]), m[3])
 
 
 def list_members(zip_path: str | Path) -> list[Member]:
-    """Names only; nothing is opened, so this is allowed for every user."""
+    """List the member names. Nothing is opened, so this is allowed for every user."""
     with zipfile.ZipFile(zip_path) as z:
         names = [n for n in z.namelist() if n.endswith(".npz")]
     return sorted((parse_member(n) for n in names), key=lambda m: m.name)
@@ -43,7 +45,10 @@ def list_members(zip_path: str | Path) -> list[Member]:
 
 def _check_allowed(user: int) -> None:
     if user in TEST_USERS and os.environ.get(ALLOW_TEST_ENV) != "1":
-        raise PermissionError(f"user{user} is a test user and may not be loaded before Week 11")
+        raise PermissionError(
+            f"user{user} is a test user and may not be loaded before Week 11. "
+            "See the data rules in docs/project-rules.md."
+        )
 
 
 def _read_header(f) -> tuple[tuple[int, ...], bool, np.dtype]:
@@ -52,22 +57,22 @@ def _read_header(f) -> tuple[tuple[int, ...], bool, np.dtype]:
         return np.lib.format.read_array_header_1_0(f)
     if version == (2, 0):
         return np.lib.format.read_array_header_2_0(f)
-    raise ValueError(f"unsupported .npy format version {version}")
+    raise ValueError(f"The .npy format version {version} is not supported. Only versions 1.0 and 2.0 can be read.")
 
 
 def _read_into(f, buf: memoryview) -> None:
-    """Fill buf completely; a short read before that means a truncated file."""
+    """Fill the buffer completely. A short read means that the file is truncated."""
     got = 0
     while got < len(buf):
         n = f.readinto(buf[got:])
         if not n:
-            raise EOFError("unexpected end of inputs.npy")
+            raise EOFError("The inputs.npy stream ended early, so the archive is probably truncated. Check the zip file.")
         got += n
 
 
 @contextmanager
 def _open_member(zip_path: str | Path, member: str | Member):
-    """Yield the inner .npz ZipFile of one member, after the test-user check."""
+    """Yield the inner .npz ZipFile of one member after checking that the user may be loaded."""
     m = member if isinstance(member, Member) else parse_member(member)
     _check_allowed(m.user)
     with zipfile.ZipFile(zip_path) as outer, outer.open(m.name) as raw, zipfile.ZipFile(raw) as npz:
@@ -82,14 +87,14 @@ def _read_targets(npz: zipfile.ZipFile) -> np.ndarray:
 def _check_inputs_header(f, targets: np.ndarray) -> tuple[int, ...]:
     shape, fortran_order, dtype = _read_header(f)
     if dtype != np.dtype("<f4") or fortran_order:
-        raise ValueError(f"unexpected inputs layout: dtype={dtype} fortran={fortran_order}")
+        raise ValueError(f"The inputs array must be little-endian float32 in C order, but it has dtype {dtype} and fortran_order={fortran_order}.")
     if shape[1:] != FRAME_SHAPE or shape[0] != len(targets):
-        raise ValueError(f"inputs {shape} does not match targets {targets.shape}")
+        raise ValueError(f"The inputs array has shape {shape}, which does not match the targets array of shape {targets.shape}.")
     return shape
 
 
 def read_meta(zip_path: str | Path, member: str | Member) -> tuple[int, np.ndarray]:
-    """Return (N, targets[N,100]) from the .npy headers and the targets array; inputs data is never read."""
+    """Return the number of recordings N and the targets array of shape (N, 100). Only headers are read, never the inputs data."""
     with _open_member(zip_path, member) as npz:
         targets = _read_targets(npz)
         with npz.open("inputs.npy") as f:
@@ -106,8 +111,11 @@ def _iter_inputs(f, n: int) -> Iterator[np.ndarray]:
 
 @contextmanager
 def open_recordings(zip_path: str | Path, member: str | Member):
-    """Yield (targets[N, frames], recordings): targets are read up front, recordings is a one-pass iterator
-    over inputs[100,3,32,64] float32. Lets a caller inspect the targets before paying for the inputs."""
+    """Yield the targets array of shape (N, frames) and a one-pass iterator over the recordings.
+
+    The targets are read first, so that a caller can inspect them before paying for the inputs. Each recording
+    has shape (100, 3, 32, 64) and dtype float32.
+    """
     with _open_member(zip_path, member) as npz:
         targets = _read_targets(npz)
         with npz.open("inputs.npy") as f:
@@ -118,7 +126,7 @@ def open_recordings(zip_path: str | Path, member: str | Member):
 def iter_recordings(
     zip_path: str | Path, member: str | Member
 ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
-    """Yield (inputs[100,3,32,64] float32, targets[100] int32), one recording at a time."""
+    """Yield one recording at a time as a pair of inputs (100, 3, 32, 64) float32 and targets (100,) int32."""
     with open_recordings(zip_path, member) as (targets, recordings):
         for i, rec in enumerate(recordings):
             yield rec, targets[i].copy()

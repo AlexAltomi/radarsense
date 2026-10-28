@@ -4,7 +4,7 @@ from radarsense_dsp.labels import analyze_targets, span_violations
 
 
 def make(*recs):
-    """Each rec is a list of (value, start, length) runs on an otherwise-zero 100-frame recording."""
+    """Build targets from recordings, each given as a list of (value, start, length) runs on an otherwise empty 100-frame recording."""
     t = np.zeros((len(recs), 100), dtype=np.int32)
     for i, runs in enumerate(recs):
         for value, start, length in runs:
@@ -29,7 +29,7 @@ def test_empty_recording_counts_as_zero_gesture_and_is_excluded_from_start_stats
     assert a["labelled_hist"] == {0: 1, 10: 1}
     assert a["zero_gesture"] == 1
     assert a["start"]["min"] == a["start"]["max"] == 40
-    assert a["runs_hist"] == {1: 1}  # zero-gesture recordings have no runs and are not counted here
+    assert a["runs_hist"] == {1: 1}  # Recordings without a gesture have no runs and are not counted here.
     assert a["contiguous"] == 1
 
 
@@ -38,7 +38,7 @@ def test_split_run_is_not_contiguous():
     assert a["labelled_hist"] == {10: 1}
     assert a["runs_hist"] == {2: 1}
     assert a["contiguous"] == 0
-    assert a["span_hist"] == {25: 1}  # frames 10..34
+    assert a["span_hist"] == {25: 1}  # The span covers frames 10 to 34.
     assert a["multi_value"]["count"] == 0
 
 
@@ -66,10 +66,10 @@ def test_span_violations_none_for_clean_recordings():
 
 def test_span_violations_kinds_and_order():
     t = make(
-        [(3, 20, 10)],  # 0 clean
-        [],  # 1 no gesture
-        [(3, 10, 5), (3, 30, 5)],  # 2 split span
-        [(1, 10, 5), (6, 15, 5)],  # 3 two values (contiguous)
-        [(1, 10, 5), (6, 40, 5)],  # 4 two values and split: reported as multiple_values
+        [(3, 20, 10)],  # Recording 0 is clean.
+        [],  # Recording 1 has no gesture.
+        [(3, 10, 5), (3, 30, 5)],  # Recording 2 has a split span.
+        [(1, 10, 5), (6, 15, 5)],  # Recording 3 has two values in one contiguous run.
+        [(1, 10, 5), (6, 40, 5)],  # Recording 4 has two values and is split, so it is reported as multiple_values.
     )
     assert span_violations(t) == [(1, "no_gesture"), (2, "split_span"), (3, "multiple_values"), (4, "multiple_values")]

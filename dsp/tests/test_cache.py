@@ -21,7 +21,7 @@ CONSTANTS = Constants(db_min=0.0, db_max=60.0, pair_a=(0, 2), pair_b=(1, 2), sou
 
 
 def make_zip(tmp_path, stems, labels=(1, 2, 3), split_recording=None):
-    """radar_dataset-style zip; every recording has an 8-frame gesture, except `split_recording` (two runs)."""
+    """Create a zip in the style of radar_dataset. Every recording has an 8-frame gesture, except `split_recording`, which has two runs."""
     rng = np.random.default_rng(0)
     originals = {}
     zip_path = tmp_path / "radar_dataset.zip"
@@ -98,12 +98,12 @@ def test_span_violation_skips_the_file_and_records_it(tmp_path):
     out = tmp_path / "processed"
     result = build_file(zip_path, member("user4_e1"), out, CONSTANTS, "c")
     assert result.outcome == "violation"
-    assert sorted(p.name for p in out.iterdir()) == ["index.json"]  # no frames, no targets, no partial
+    assert sorted(p.name for p in out.iterdir()) == ["index.json"]  # The directory has no frames, no targets and no partial file.
     entry = json.loads((out / "index.json").read_text())["files"]["user4_e1"]
     assert entry["status"] == "violation"
     assert entry["violations"] == {"count": 1, "kinds": {"split_span": 1}, "first": [[1, "split_span"]]}
     assert "shape" not in entry
-    # a known violation is not re-read
+    # A member with a known violation is not read again.
     again = build_file(tmp_path / "missing.zip", member("user4_e1"), out, CONSTANTS, "c")
     assert again.outcome == "violation"
 
