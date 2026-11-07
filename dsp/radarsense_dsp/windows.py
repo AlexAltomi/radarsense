@@ -62,21 +62,54 @@ def gesture_span(row: np.ndarray) -> tuple[int, int, int]:
     return label, s, length
 
 
+def window_class_at(label: int, s: int, length: int, w: int) -> int | None:
+    """Return the class of the window that starts at frame w, or None if the rule excludes it.
+
+    This is the single place that applies the window rule. `window_classes` calls it for the stride-4 starts, and the
+    training shift augmentation calls it for the shifted start, so a shifted window is relabelled by the same rule.
+    """
+    if label not in CLASS_MAP:
+        raise ValueError(f"The label {label} is not in CLASS_MAP, so it has no class number.")
+    ext_lo, ext_hi = max(0, s - PRE), s + length - 1
+    far_lo, far_hi = s - PRE - GUARD, s + length - 1 + GUARD
+    w_hi = w + WINDOW - 1
+    if w <= ext_lo and w_hi >= ext_hi:
+        return CLASS_MAP[label]
+    if w_hi < far_lo or w > far_hi:
+        return 0
+    return None
+
+
+def window_margin(s: int, length: int, w: int) -> int | None:
+    """Return how many frames the window at start w can slide in its closer direction before the rule changes.
+
+    A small margin means the window lies near the edge of its rule. For a gesture window the margin is the smaller
+    of the free frames on the left and on the right of the extended span. For a no-gesture window it is the number
+    of frames the window could still move towards the gesture and stay at least GUARD frames away. A window that the
+    rule excludes returns None. A side that faces the start of the recording is not counted when the extended span
+    begins at frame 0, because the window cannot move past the recording start.
+    """
+    ext_lo, ext_hi = max(0, s - PRE), s + length - 1
+    far_lo, far_hi = s - PRE - GUARD, s + length - 1 + GUARD
+    w_hi = w + WINDOW - 1
+    if w <= ext_lo and w_hi >= ext_hi:
+        left = ext_lo - w if s - PRE > 0 else FRAMES
+        return min(left, w_hi - ext_hi)
+    if w_hi < far_lo:
+        return far_lo - 1 - w_hi
+    if w > far_hi:
+        return w - far_hi - 1
+    return None
+
+
 def window_classes(row: np.ndarray) -> list[tuple[int, int]]:
     """Return (start, class) for every gesture and no-gesture window of one recording. Excluded windows are left out."""
     label, s, length = gesture_span(row)
-    if label not in CLASS_MAP:
-        raise ValueError(f"The label {label} is not in CLASS_MAP, so it has no class number.")
-    gesture_cls = CLASS_MAP[label]
-    ext_lo, ext_hi = max(0, s - PRE), s + length - 1
-    far_lo, far_hi = s - PRE - GUARD, s + length - 1 + GUARD
     out = []
     for w in window_starts():
-        w_hi = w + WINDOW - 1
-        if w <= ext_lo and w_hi >= ext_hi:
-            out.append((w, gesture_cls))
-        elif w_hi < far_lo or w > far_hi:
-            out.append((w, 0))
+        cls = window_class_at(label, s, length, w)
+        if cls is not None:
+            out.append((w, cls))
     return out
 
 
@@ -237,23 +270,56 @@ def user_balanced_weights(users: np.ndarray) -> np.ndarray:
 class BalancedUserSampler:
     """Draw the same number of windows from every user in each epoch.
 
-    By default the number equals the window count of the smallest user.
+    By default the number equals the window count of the smallest user, and the windows of a user are drawn
+    uniformly, so the classes keep their natural share (mostly no-gesture).
+
+    When `classes` is given, the draw for each user is also balanced over the classes. Each gesture class gets the
+    same number of windows and the no-gesture class gets `none_ratio` times that number. A class that a user does not
+    have is skipped, and its share goes to the other classes.
     """
 
-    def __init__(self, users: np.ndarray, per_user: int | None = None, seed: int = 0):
+    def __init__(
+        self,
+        users: np.ndarray,
+        per_user: int | None = None,
+        seed: int = 0,
+        classes: np.ndarray | None = None,
+        none_ratio: float = 2.0,
+    ):
         self._by_user = {int(u): np.flatnonzero(users == u) for u in np.unique(users)}
         self.per_user = per_user if per_user is not None else min(len(v) for v in self._by_user.values())
         self._seed = seed
         self._epoch = 0
+        # For each user: a list of (pool of indices, number of draws), one entry per class that the user has.
+        self._plan: dict[int, list[tuple[np.ndarray, int]]] | None = None
+        if classes is not None:
+            self._plan = {u: self._class_plan(idx, classes[idx], none_ratio) for u, idx in self._by_user.items()}
+
+    def _class_plan(self, idx: np.ndarray, cls: np.ndarray, none_ratio: float) -> list[tuple[np.ndarray, int]]:
+        present = [int(c) for c in np.unique(cls)]
+        weights = np.array([none_ratio if c == 0 else 1.0 for c in present])
+        exact = self.per_user * weights / weights.sum()
+        quota = np.floor(exact).astype(int)
+        for k in np.argsort(-(exact - quota))[: self.per_user - quota.sum()]:
+            quota[k] += 1
+        return [(idx[cls == c], int(q)) for c, q in zip(present, quota, strict=True)]
 
     def __len__(self) -> int:
         return self.per_user * len(self._by_user)
 
     def epoch_indices(self, epoch: int) -> np.ndarray:
         rng = np.random.default_rng([self._seed, epoch])
-        picks = [
-            rng.choice(idx, self.per_user, replace=self.per_user > len(idx)) for _, idx in sorted(self._by_user.items())
-        ]
+        if self._plan is None:
+            picks = [
+                rng.choice(idx, self.per_user, replace=self.per_user > len(idx))
+                for _, idx in sorted(self._by_user.items())
+            ]
+        else:
+            picks = [
+                rng.choice(pool, q, replace=q > len(pool))
+                for _, plan in sorted(self._plan.items())
+                for pool, q in plan
+            ]
         out = np.concatenate(picks)
         rng.shuffle(out)
         return out
