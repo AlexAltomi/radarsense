@@ -8,6 +8,7 @@ and a split of the macro-F1 into windows well inside their rule and windows near
 is stamped with the git commit, the cache id and the model name.
 """
 import argparse
+import csv
 import re
 import sys
 from pathlib import Path
@@ -42,6 +43,7 @@ from radarsense_dsp.windows import (
 
 CACHE = ROOT / "data" / "processed"
 SPLITS = ROOT / "training" / "splits.json"
+LOG = ROOT / "training" / "runs" / f"{MODEL_NAME}-seed0" / "log.csv"
 CHECKPOINT = ROOT / "training" / "checkpoints" / f"{MODEL_NAME}-seed0" / "best.pt"
 OUT = ROOT / "training" / "results" / "cnn.md"
 FIGURE = ROOT / "training" / "figures" / "cnn_confusion.png"
@@ -104,6 +106,42 @@ def confusion_figure(cm: np.ndarray, path: Path, title: str) -> None:
     plt.close(fig)
 
 
+def history_markdown(log: Path, chosen: int) -> list[str]:
+    """Return the validation macro-F1 of every epoch of the run, and the mean and spread of the last 5 epochs."""
+    with open(log, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    f1 = np.array([float(r["val_macro_f1"]) for r in rows])
+    last = f1[-5:]
+    run_stamp = f"commit `{rows[0]['commit']}` · cache `{rows[0]['cache']}` · model `{rows[0]['model']}`"
+    out = ["", "## Training history", ""]
+    out += [
+        (
+            f"The validation macro-F1 of every epoch of the training run ({run_stamp}). Epoch {chosen} was chosen "
+            "because it has the highest macro-F1 on the validation users, which are also the users this report is "
+            "computed on. The number at the chosen epoch is therefore the best of a noisy sequence and is optimistic."
+        ),
+        "",
+        "| epoch | train loss | val loss | val macro-F1 | val accuracy |",
+        "|---|---|---|---|---|",
+    ]
+    for r in rows:
+        mark = " (chosen)" if int(r["epoch"]) == chosen else ""
+        out.append(
+            f"| {r['epoch']}{mark} | {float(r['train_loss']):.4f} | {float(r['val_loss']):.4f} | "
+            f"{float(r['val_macro_f1']):.4f} | {float(r['val_accuracy']):.4f} |"
+        )
+    n = len(last)
+    out += [
+        "",
+        (
+            f"Last {n} epochs (epochs {rows[-n]['epoch']} to {rows[-1]['epoch']}): mean macro-F1 {last.mean():.4f}, "
+            f"standard deviation {last.std(ddof=1):.4f}, minimum {last.min():.4f}, maximum {last.max():.4f}. "
+            f"Over all {len(f1)} epochs the macro-F1 ranges from {f1.min():.4f} to {f1.max():.4f}."
+        ),
+    ]
+    return out
+
+
 def fmt(v: float | None) -> str:
     return "n/a" if v is None else f"{v:.4f}"
 
@@ -116,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--figure", type=Path, default=FIGURE)
     ap.add_argument("--baseline", type=Path, default=BASELINE)
+    ap.add_argument("--log", type=Path, default=LOG, help="log.csv of the training run")
     args = ap.parse_args(argv)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -166,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     note = "The mapping is defined only in `dsp/radarsense_dsp/windows.py`. Not yet verified: the real gesture names."
     out += ["## Class map", "", f"`{class_map_json()}`. {note}", ""]
     out += [f"## {MODEL_NAME}", "", f"These results were produced at {stamp}.", ""]
-    out += [f"- overall accuracy: {res['accuracy']:.4f}", f"- macro-F1 (classes present in val): {res['macro_f1']:.4f}", ""]
+    out += [f"- overall accuracy: {res['accuracy']:.4f}", f"- macro-F1 (classes present in val): {res['macro_f1']:.4f} (epoch {ckpt['epoch']}, chosen on the validation users)", ""]
     out += [f"Per-class recall {s}:", "", "| class | recall | val windows |", "|---|---|---|"]
     out += [f"| {cls_label(c)} | {fmt(res['recall'][c])} | {res['support'][c]} |" for c in range(N_CLASSES)]
     out += ["", f"Confusion matrix with the true class in the rows and the predicted class in the columns {s}:", ""]
@@ -177,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     out += [f"Accuracy for each validation user {s}:", "", "| user | accuracy | windows |", "|---|---|---|"]
     out += [f"| user{u} | {acc:.4f} | {n} |" for u, (acc, n) in sorted(users.items())]
 
+    out += history_markdown(args.log, ckpt["epoch"])
     out += ["", "## Comparison with the baselines", ""]
     out += [
         (
