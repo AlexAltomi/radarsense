@@ -1,13 +1,24 @@
 """Tests for the export scripts that do not need LiteRT: BatchNorm folding, window selection, the wire round trip,
 the metrics and the model card."""
-import sys
-from pathlib import Path
+import json
 
+import export_common as ec
+import export_prepare as ep
+import numpy as np
 import pytest
 import torch
+from baseline import evaluate
 from model import GestureCNN, fold_batchnorm
+from test_cnn import SPLITS, make_cache
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dsp"))
+from radarsense_dsp.windows import (
+    CLASS_NAMES,
+    CacheReader,
+    build_window_index,
+    load_complete_members,
+)
+
+SPANS = [(label, 40, 8) for label in (1, 2, 3, 6, 7) for _ in range(8)]  # 5 gestures x 8 recordings
 
 
 def trained_like_model() -> GestureCNN:
@@ -39,3 +50,130 @@ def test_fold_batchnorm_refuses_a_model_in_train_mode():
         fold_batchnorm(GestureCNN().train())
 
 
+@pytest.fixture
+def cache(tmp_path):
+    return make_cache(tmp_path, {"user1_e1": (1, SPANS), "user2_e1": (2, SPANS), "user3_e1": (3, SPANS)})
+
+
+def train_rows(cache):
+    return build_window_index(cache, load_complete_members(cache, SPLITS)).split_rows("train")
+
+
+def test_select_balanced_has_equal_classes_and_is_deterministic(cache):
+    rows = train_rows(cache)
+    a, b = ec.select_balanced(rows, 62, seed=0), ec.select_balanced(rows, 62, seed=0)
+    assert np.array_equal(a, b) and len(set(a.tolist())) == 62
+    counts = np.bincount(rows["cls"][a], minlength=6)
+    assert counts.tolist() == [11, 11, 10, 10, 10, 10]  # n % 6 = 2 extra windows go to the first classes
+    assert not np.array_equal(a, ec.select_balanced(rows, 62, seed=1))
+    for c in range(6):  # both train users take part in every class
+        assert set(rows["user"][a][rows["cls"][a] == c]) == {1, 2}
+
+
+def test_select_balanced_refuses_test_users_and_missing_classes(cache):
+    rows = train_rows(cache)
+    poisoned = rows.copy()
+    poisoned["user"][0] = 10
+    with pytest.raises(PermissionError):
+        ec.select_balanced(poisoned, 12, seed=0)
+    with pytest.raises(ValueError):
+        ec.select_balanced(rows, 6 * 10_000, seed=0)
+
+
+def test_prepare_uses_train_users_for_calibration_and_validation_users_for_evaluation(cache):
+    data, digest = ep.prepare(cache, SPLITS, n_calib=30, n_eval=30, seed=0)
+    assert data["calib_u8"].shape == (30, 32, 3, 32, 32) and data["calib_u8"].dtype == np.uint8
+    assert data["eval_u8"].shape == (30, 32, 3, 32, 32)
+    assert set(data["calib_users"].tolist()) == {1, 2}
+    assert set(data["eval_users"].tolist()) == {3}
+    assert np.bincount(data["eval_classes"], minlength=6).tolist() == [5] * 6
+    assert len(digest) == 16
+    # Every window equals the wire round trip of the cached window.
+    reader = CacheReader(cache, load_complete_members(cache, SPLITS))
+    member, recording, start = data["eval_rows"][0]
+    window = reader.window({"member": member, "recording": recording, "start": start}).astype(np.float32)
+    assert np.array_equal(data["eval_u8"][0], ec.wire_roundtrip(window[None])[0][0])
+
+
+def test_prepare_refuses_a_cache_with_a_test_user(tmp_path):
+    spec = {"user1_e1": (1, SPANS), "user3_e1": (3, SPANS), "user10_e1": (10, SPANS)}
+    with pytest.raises(PermissionError):
+        ep.prepare(make_cache(tmp_path, spec), SPLITS, n_calib=12, n_eval=12)
+
+
+def test_main_writes_inputs_checkpoint_copy_and_stamp(cache, tmp_path):
+    ckpt = {
+        "model_state": GestureCNN().state_dict(), "model": "cnn-v1", "epoch": 7, "val_macro_f1": 0.95,
+        "commit": "abc123", "cache_id": "deadbeef", "config": {"run_name": "cnn-v1-test", "max_epochs": 12},
+    }
+    run = tmp_path / "checkpoints" / "cnn-v1-test"
+    run.mkdir(parents=True)
+    torch.save(ckpt, run / "best.pt")
+    splits = tmp_path / "splits.json"
+    splits.write_text(json.dumps(SPLITS), encoding="utf-8")
+    out = tmp_path / "models" / "cnn-v1-test"
+    args = ["--checkpoint", str(run / "best.pt"), "--cache", str(cache), "--splits", str(splits), "--out-dir", str(out)]
+    assert ep.main([*args, "--n-calib", "24", "--n-eval", "24"]) == 0
+    stamp = json.loads((out / ec.STAMP_NAME).read_text())
+    assert stamp["version"] == "cnn-v1-test" and stamp["checkpoint_commit"] == "abc123" and stamp["epoch"] == 7
+    assert stamp["calib_users"] == ["user1", "user2"]
+    assert (out / "best.pt").exists() and (out / ec.INPUTS_NAME).exists()
+    with np.load(out / ec.INPUTS_NAME) as z:
+        assert z["eval_u8"].dtype == np.uint8 and set(z["eval_users"].tolist()) == {3}
+
+
+def test_wire_roundtrip_error_is_at_most_one_step():
+    rng = np.random.default_rng(0)
+    w = np.empty((3, 32, 3, 32, 32), dtype=np.float32)
+    w[:, :, 0] = rng.random((3, 32, 32, 32))
+    w[:, :, 1:] = rng.uniform(-1, 1, (3, 32, 2, 32, 32))
+    u8, dec = ec.wire_roundtrip(w)
+    assert u8.dtype == np.uint8 and dec.dtype == np.float32
+    assert np.abs(dec[:, :, 0] - w[:, :, 0]).max() <= 1 / 255
+    assert np.abs(dec[:, :, 1:] - w[:, :, 1:]).max() <= 2 / 255
+
+
+def test_macro_f1_matches_baseline_evaluate():
+    rng = np.random.default_rng(1)
+    y = rng.integers(0, 6, 400)
+    pred = np.where(rng.random(400) < 0.7, y, rng.integers(0, 6, 400))
+    ref = evaluate(y, pred)
+    assert ec.macro_f1(y, pred) == pytest.approx(ref["macro_f1"])
+    assert ec.accuracy(y, pred) == pytest.approx(ref["accuracy"])
+    assert ec.per_class_recall(y, pred) == pytest.approx(ref["recall"])
+    only_some = np.array([0, 0, 1, 1])  # classes that do not occur are left out of the average
+    assert ec.macro_f1(only_some, only_some) == 1.0
+
+
+def test_agreement_and_int8_fallback_rule():
+    a = np.eye(6)[[0, 1, 2, 3]]
+    b = np.eye(6)[[0, 1, 2, 4]]
+    assert ec.top1_agreement(a, b) == 0.75
+    assert not ec.int8_needs_fallback(0.96, 0.955)
+    assert ec.int8_needs_fallback(0.96, 0.9499)  # more than 1 point below
+
+
+def test_model_card_fields():
+    constants = json.loads((ec.ROOT / "dsp" / "radarsense_dsp" / "constants.json").read_text())
+    stamp = {
+        "model": "cnn-v1", "n_eval": 1000, "seed": 0, "epoch": 6, "val_macro_f1": 0.96,
+        "checkpoint_commit": "abc", "cache_id": "cid", "prepared_at_commit": "def",
+    }
+    m = {"accuracy": 0.9, "macro_f1": 0.9, "recall": [0.9] * 6}
+    card = ec.build_model_card(
+        "cnn-v1-e12", stamp, constants, {"pytorch": m, "fp32": m, "int8": m}, {"fp32": 1, "int8": 1},
+        {"pytorch_vs_fp32": 1.0}, None,
+    )
+    assert card["version"] == "cnn-v1-e12"
+    assert card["input"]["shape"] == [1, 32, 3, 32, 32] and card["input"]["wire_dtype"] == "uint8"
+    assert card["classes"] == list(CLASS_NAMES)
+    assert card["uint8_decode"]["channel_0"]["formula"] == "x = u / 255"
+    assert card["uint8_decode"]["channel_1"]["formula"] == "x = u / 255 * 2 - 1"
+    assert card["db_range"]["db_min"] == constants["db_min"] and card["db_range"]["db_max"] == constants["db_max"]
+    assert card["db_range"]["source_commit"] == constants["git_commit"]
+    assert card["dataset"]["doi"] == "10.5281/zenodo.15178095"
+    assert card["test"]["macro_f1"] is None and card["test"]["accuracy"] is None
+    assert card["validation"]["users"] == ["user3", "user5"] and card["validation"]["models"]["int8"] == m
+    assert card["stamp"] == {"checkpoint_commit": "abc", "cache_id": "cid", "prepared_at_commit": "def"}
+    assert card["fallback"] is None
+    json.dumps(card)  # serializable
