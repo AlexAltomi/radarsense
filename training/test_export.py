@@ -177,3 +177,34 @@ def test_model_card_fields():
     assert card["stamp"] == {"checkpoint_commit": "abc", "cache_id": "cid", "prepared_at_commit": "def"}
     assert card["fallback"] is None
     json.dumps(card)  # serializable
+
+
+def test_convert_litert_has_no_windows_or_cuda_dependency_at_import_time():
+    import ast
+    from pathlib import Path
+
+    source = (Path(ec.ROOT) / "training" / "convert_litert.py").read_text(encoding="utf-8")
+    top = {
+        (node.module if isinstance(node, ast.ImportFrom) else alias.name).split(".")[0]
+        for node in ast.parse(source).body
+        if isinstance(node, ast.Import | ast.ImportFrom)
+        for alias in (node.names if isinstance(node, ast.Import) else [None])
+    }
+    # litert_torch, torchao and ai_edge_quantizer are imported inside the functions, so the module imports without them.
+    assert top == {"argparse", "sys", "pathlib", "numpy", "torch", "model", "replay"}
+
+
+def test_convert_litert_loads_the_checkpoint_and_decodes_the_calibration_windows(tmp_path):
+    import convert_litert as cl
+
+    torch.manual_seed(0)
+    model = trained_like_model()
+    torch.save({"model_state": model.state_dict(), "model": "cnn-v1"}, tmp_path / "best.pt")
+    loaded = cl.load_model(tmp_path / "best.pt")
+    x = torch.rand(2, 32, 3, 32, 32)
+    with torch.no_grad():
+        assert torch.allclose(model(x), loaded(x))
+    assert not loaded.training
+    with pytest.raises(SystemExit):
+        torch.save({"model_state": model.state_dict(), "model": "other"}, tmp_path / "other.pt")
+        cl.load_model(tmp_path / "other.pt")
