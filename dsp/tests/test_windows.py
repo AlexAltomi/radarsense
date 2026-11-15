@@ -293,3 +293,14 @@ def test_class_balanced_sampler_gives_gestures_equal_shares_and_none_twice_that(
         unit = 70 / (n_gesture + 2)  # The no-gesture class counts twice.
         assert abs(got[0] - 2 * unit) <= 1 and all(abs(got[c] - unit) <= 1 for c in present[1:])
         assert all(got[c] == 0 for c in range(6) if c not in present)
+
+
+def test_far_span_is_the_zone_that_no_gesture_windows_avoid():
+    lo, hi = windows.far_span(40, 8)
+    assert (lo, hi) == (20, 57)
+    for w in windows.window_starts():
+        overlaps = w <= hi and w + windows.WINDOW - 1 >= lo
+        cls = windows.window_class_at(3, 40, 8, w)
+        assert (cls == 0) == (not overlaps and cls is not None)
+        if overlaps:
+            assert cls != 0
