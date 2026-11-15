@@ -1,8 +1,8 @@
 # cnn-v1: per-frame CNN with a temporal head
 
-This report was produced at commit `be00a630abf133a8d21f5079a30b3bd91628113d` · cache `4ecddb8cb8697e2d` · model `cnn-v1`.
+This report was produced at commit `1035dc817aafc5fa76695c7bbb02e88b76a5f1ac` · cache `4ecddb8cb8697e2d` · model `cnn-v1`.
 
-The checkpoint is the best epoch (6) of a run trained at commit `11eb67351d5801936e4e9932fd4422ae7c80722c+dirty` on cache `4ecddb8cb8697e2d`, chosen by the macro-F1 on the validation users. It is evaluated on the nominal files of the validation users user3 and user5 only. Test users are never loaded.
+The checkpoint is the best epoch (6) of a run trained at commit `1035dc817aafc5fa76695c7bbb02e88b76a5f1ac` on cache `4ecddb8cb8697e2d`, chosen by the macro-F1 on the validation users. It is evaluated on the nominal files of the validation users user3 and user5 only. Test users are never loaded.
 
 ## Class map
 
@@ -10,12 +10,12 @@ The checkpoint is the best epoch (6) of a run trained at commit `11eb67351d58019
 
 ## cnn-v1
 
-These results were produced at commit `be00a630abf133a8d21f5079a30b3bd91628113d` · cache `4ecddb8cb8697e2d` · model `cnn-v1`.
+These results were produced at commit `1035dc817aafc5fa76695c7bbb02e88b76a5f1ac` · cache `4ecddb8cb8697e2d` · model `cnn-v1`.
 
 - overall accuracy: 0.9668
 - macro-F1 (classes present in val): 0.9610 (epoch 6, chosen on the validation users)
 
-Per-class recall (commit `be00a630abf133a8d21f5079a30b3bd91628113d` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
+Per-class recall (commit `1035dc817aafc5fa76695c7bbb02e88b76a5f1ac` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
 
 | class | recall | val windows |
 |---|---|---|
@@ -26,7 +26,7 @@ Per-class recall (commit `be00a630abf133a8d21f5079a30b3bd91628113d` · cache `4e
 | 4 label6 | 0.8449 | 1438 |
 | 5 label7 | 0.9934 | 1509 |
 
-Confusion matrix with the true class in the rows and the predicted class in the columns (commit `be00a630abf133a8d21f5079a30b3bd91628113d` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
+Confusion matrix with the true class in the rows and the predicted class in the columns (commit `1035dc817aafc5fa76695c7bbb02e88b76a5f1ac` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
 
 | true \ pred | 0 none | 1 label1 | 2 label2 | 3 label3 | 4 label6 | 5 label7 |
 |---|---|---|---|---|---|---|
@@ -39,7 +39,7 @@ Confusion matrix with the true class in the rows and the predicted class in the 
 
 The matrix is also saved as `training/figures/cnn_confusion.png`.
 
-Accuracy for each validation user (commit `be00a630abf133a8d21f5079a30b3bd91628113d` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
+Accuracy for each validation user (commit `1035dc817aafc5fa76695c7bbb02e88b76a5f1ac` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
 
 | user | accuracy | windows |
 |---|---|---|
@@ -48,7 +48,7 @@ Accuracy for each validation user (commit `be00a630abf133a8d21f5079a30b3bd916281
 
 ## Training history
 
-The validation macro-F1 of every epoch of the training run (commit `11eb67351d5801936e4e9932fd4422ae7c80722c+dirty` · cache `4ecddb8cb8697e2d` · model `cnn-v1`). Epoch 6 was chosen because it has the highest macro-F1 on the validation users, which are also the users this report is computed on. The number at the chosen epoch is therefore the best of a noisy sequence and is optimistic.
+The validation macro-F1 of every epoch of the training run (commit `cc86f514f3fc4860b16c4cefe8fc8c45fb45ef03` · cache `4ecddb8cb8697e2d` · model `cnn-v1`). Epoch 6 was chosen because it has the highest macro-F1 on the validation users, which are also the users this report is computed on. The number at the chosen epoch is therefore the best of a noisy sequence and is optimistic.
 
 | epoch | train loss | val loss | val macro-F1 | val accuracy |
 |---|---|---|---|---|
@@ -72,11 +72,11 @@ All three models are evaluated on the same validation windows. Each row carries 
 
 | model | accuracy | macro-F1 | user3 | user5 | stamp |
 |---|---|---|---|---|---|
-| cnn-v1 | 0.9668 | 0.9610 | 0.9408 | 0.9906 | commit `be00a630abf133a8d21f5079a30b3bd91628113d` · cache `4ecddb8cb8697e2d` · model `cnn-v1` |
+| cnn-v1 | 0.9668 | 0.9610 | 0.9408 | 0.9906 | commit `1035dc817aafc5fa76695c7bbb02e88b76a5f1ac` · cache `4ecddb8cb8697e2d` · model `cnn-v1` |
 | baseline-lr-v1 | 0.9101 | 0.8937 | 0.8903 | 0.9283 | commit `3bec92ffb66af1d554748b3ffc0018242685e56e` · cache `4ecddb8cb8697e2d` · model `baseline-lr-v1` |
 | baseline-rf-v1 | 0.8765 | 0.8439 | 0.7786 | 0.9664 | commit `3bec92ffb66af1d554748b3ffc0018242685e56e` · cache `4ecddb8cb8697e2d` · model `baseline-rf-v1` |
 
-Per-class recall (commit `be00a630abf133a8d21f5079a30b3bd91628113d` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
+Per-class recall (commit `1035dc817aafc5fa76695c7bbb02e88b76a5f1ac` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
 
 | class | cnn-v1 | baseline-lr-v1 | baseline-rf-v1 |
 |---|---|---|---|
@@ -95,7 +95,7 @@ cnn-v1 minus baseline-rf-v1 in macro-F1: +0.1171.
 
 The margin of a window is the number of frames it could slide towards the edge of its rule before the label rule of `window_class_at` changes its class. For a gesture window it is the smaller free space around the extended span. For a no-gesture window it is the number of frames it could move towards the gesture and stay 10 frames away. A window is near the edge when its margin is below 3 frames, which is the largest shift used in training. The macro-F1 of a group averages over the classes that occur in that group, with the predictions of the whole model.
 
-Windows by group and class (commit `be00a630abf133a8d21f5079a30b3bd91628113d` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
+Windows by group and class (commit `1035dc817aafc5fa76695c7bbb02e88b76a5f1ac` · cache `4ecddb8cb8697e2d` · model `cnn-v1`):
 
 | group | windows | accuracy | macro-F1 | 0 none | 1 label1 | 2 label2 | 3 label3 | 4 label6 | 5 label7 |
 |---|---|---|---|---|---|---|---|---|---|
