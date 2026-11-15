@@ -1,7 +1,7 @@
 {
   "venvPath": ".",
   "venv": ".venv",
-  "extraPaths": ["dsp", "training", "backend/api"],
-  "include": ["dsp", "training", "backend/api"],
+  "extraPaths": ["dsp", "training", "backend/api", "backend/replay"],
+  "include": ["dsp", "training", "backend/api", "backend/replay"],
   "typeCheckingMode": "basic"
 }
