@@ -48,5 +48,21 @@ def parameter_count(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters())
 
 
+def fold_batchnorm(model: GestureCNN) -> GestureCNN:
+    """Fold every BatchNorm into the convolution before it, in place, and return the model.
+
+    The model must be in eval mode (the folded constants use the running statistics). Each block's Conv2d is replaced
+    by an equivalent Conv2d with the scale and shift of the BatchNorm built in, and the BatchNorm becomes an Identity.
+    The output is the same up to float rounding.
+    """
+    if model.training:
+        raise ValueError("Call model.eval() before folding BatchNorm: the folding uses the running statistics.")
+    for block in model.encoder:
+        if isinstance(block, nn.Sequential) and isinstance(block[1], nn.BatchNorm2d):
+            block[0] = torch.nn.utils.fusion.fuse_conv_bn_eval(block[0], block[1])
+            block[1] = nn.Identity()
+    return model
+
+
 if __name__ == "__main__":
     print(f"{MODEL_NAME} has {parameter_count(GestureCNN())} parameters.")
