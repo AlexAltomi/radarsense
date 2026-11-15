@@ -208,3 +208,45 @@ def test_convert_litert_loads_the_checkpoint_and_decodes_the_calibration_windows
     with pytest.raises(SystemExit):
         torch.save({"model_state": model.state_dict(), "model": "other"}, tmp_path / "other.pt")
         cl.load_model(tmp_path / "other.pt")
+
+
+# ---- export_check: the parts that do not need LiteRT ---------------------------------------------------------------
+
+import export_check as ck
+
+
+def test_quantize_input_and_dequantize_output_round_trip():
+    x = np.array([-1.0, 0.0, 0.5, 1.0], dtype=np.float32)
+    q = ck.quantize_input(x, np.dtype(np.int8), 1 / 127, 0)
+    assert q.dtype == np.int8 and q.tolist() == [-127, 0, 64, 127]
+    assert np.allclose(ck.dequantize_output(q, 1 / 127, 0), x, atol=1 / 127)
+    assert np.array_equal(ck.quantize_input(x, np.dtype(np.float32), 0.0, 0), x)  # a float model gets x unchanged
+    assert ck.quantize_input(np.array([5.0]), np.dtype(np.int8), 1 / 127, 0).tolist() == [127]  # clipped
+    u = ck.quantize_input(np.array([0.0]), np.dtype(np.uint8), 0.5, 128)
+    assert u.dtype == np.uint8 and u.tolist() == [128]
+    f = np.array([1.5], dtype=np.float32)
+    assert ck.dequantize_output(f, 0.0, 0).tolist() == [1.5]
+
+
+def synthetic_logits(n=120, flip=0.0, seed=0):
+    rng = np.random.default_rng(seed)
+    y = np.arange(n) % 6
+    pred = np.where(rng.random(n) < flip, (y + 1) % 6, y)
+    return y, np.eye(6)[pred] * 5.0
+
+
+def test_summarize_accepts_int8_within_one_point_and_flags_float16_beyond_it():
+    y, good = synthetic_logits()
+    _, noisy = synthetic_logits(flip=0.05, seed=1)
+    metrics, agreement, fallback = ck.summarize(y, {"pytorch": good, "fp32": good, "int8": good})
+    assert fallback is None and agreement["pytorch_vs_int8"] == 1.0 and metrics["int8"]["macro_f1"] == 1.0
+    metrics, agreement, fallback = ck.summarize(y, {"pytorch": good, "fp32": good, "int8": noisy})
+    assert fallback == "float16" and agreement["fp32_vs_int8"] < 1.0
+    assert metrics["fp32"]["macro_f1"] - metrics["int8"]["macro_f1"] > 0.01
+    _, agreement, _ = ck.summarize(y, {"pytorch": good, "fp32": good, "int8": good, "fp16": good})
+    assert agreement["fp32_vs_fp16"] == 1.0
+
+
+def test_export_check_reports_missing_files_instead_of_crashing(tmp_path, capsys):
+    assert ck.main(["--dir", str(tmp_path)]) == 2
+    assert "model_fp32.tflite" in capsys.readouterr().err
