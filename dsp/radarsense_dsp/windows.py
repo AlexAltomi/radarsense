@@ -62,6 +62,15 @@ def gesture_span(row: np.ndarray) -> tuple[int, int, int]:
     return label, s, length
 
 
+def far_span(s: int, length: int) -> tuple[int, int]:
+    """Return the first and last frame of the no-gesture exclusion zone [s-PRE-GUARD, s+L-1+GUARD].
+
+    Frames outside this zone are background frames. The lower end can be negative and the upper end can lie past the
+    last frame of the recording.
+    """
+    return s - PRE - GUARD, s + length - 1 + GUARD
+
+
 def window_class_at(label: int, s: int, length: int, w: int) -> int | None:
     """Return the class of the window that starts at frame w, or None if the rule excludes it.
 
@@ -71,7 +80,7 @@ def window_class_at(label: int, s: int, length: int, w: int) -> int | None:
     if label not in CLASS_MAP:
         raise ValueError(f"The label {label} is not in CLASS_MAP, so it has no class number.")
     ext_lo, ext_hi = max(0, s - PRE), s + length - 1
-    far_lo, far_hi = s - PRE - GUARD, s + length - 1 + GUARD
+    far_lo, far_hi = far_span(s, length)
     w_hi = w + WINDOW - 1
     if w <= ext_lo and w_hi >= ext_hi:
         return CLASS_MAP[label]
@@ -90,7 +99,7 @@ def window_margin(s: int, length: int, w: int) -> int | None:
     begins at frame 0, because the window cannot move past the recording start.
     """
     ext_lo, ext_hi = max(0, s - PRE), s + length - 1
-    far_lo, far_hi = s - PRE - GUARD, s + length - 1 + GUARD
+    far_lo, far_hi = far_span(s, length)
     w_hi = w + WINDOW - 1
     if w <= ext_lo and w_hi >= ext_hi:
         left = ext_lo - w if s - PRE > 0 else FRAMES
