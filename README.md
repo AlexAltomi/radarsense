@@ -52,6 +52,13 @@ cp scripts/pre-commit .git/hooks/pre-commit
 The last line installs a git hook that blocks a commit when ruff or the tests fail. The dataset has to be placed in
 `D:\radarsense-data`, and the junction `data` points to that folder (`mklink /J data D:\radarsense-data`).
 
+Training the CNN (`training/train.py`, `training/eval.py`) also needs PyTorch with CUDA and TensorBoard. These live in a
+separate file so that the root requirements, which servers and CI may use, stay small:
+
+```
+.venv\Scripts\python.exe -m pip install -r training/requirements.txt
+```
+
 ## Running the checks
 
 ```

@@ -256,3 +256,40 @@ def test_user_balanced_weights_sum_equally_per_user():
     w = user_balanced_weights(users)
     assert w.mean() == pytest.approx(1.0)
     assert [w[users == u].sum() for u in (1, 2, 3)] == pytest.approx([100 / 3] * 3)
+
+
+# Tests of the per-start rule, the margin and the class-balanced sampler.
+
+
+def test_window_class_at_agrees_with_window_classes_for_every_start():
+    for s, length in [(40, 8), (5, 8), (88, 8), (60, 10)]:
+        r = row(3, s, length)
+        by_start = dict(window_classes(r))
+        for w in windows.window_starts():
+            assert windows.window_class_at(3, s, length, w) == by_start.get(w)
+
+
+def test_window_margin_counts_frames_to_the_edge_of_the_rule():
+    # s=40, L=8: the extended span is [30, 47]. A gesture window at 16 covers [16, 47], so it has 14 free frames on the
+    # left and none on the right.
+    assert windows.window_margin(40, 8, 16) == 0
+    assert windows.window_margin(40, 8, 28) == 2  # It covers [28, 59]: 2 free frames on the left, 12 on the right.
+    assert windows.window_margin(40, 8, 20) == 4  # It covers [20, 51]: 10 free frames on the left, 4 on the right.
+    # The no-gesture window [60, 91] has to stay beyond 47 + 10, so it could move 2 frames towards the gesture.
+    assert windows.window_margin(40, 8, 60) == 60 - 57 - 1
+    assert windows.window_margin(40, 8, 40) is None  # An excluded window has no margin.
+
+
+def test_class_balanced_sampler_gives_gestures_equal_shares_and_none_twice_that():
+    users = np.array([1] * 600 + [2] * 200)
+    classes = np.concatenate([np.repeat([0, 1, 2, 3, 4, 5], [400, 40, 50, 50, 30, 30]), np.repeat([0, 1, 2], [100, 50, 50])])
+    s = BalancedUserSampler(users, per_user=70, seed=3, classes=classes, none_ratio=2.0)
+    idx = s.epoch_indices(0)
+    assert len(idx) == 140
+    for u, present in ((1, [0, 1, 2, 3, 4, 5]), (2, [0, 1, 2])):
+        got = np.bincount(classes[idx[users[idx] == u]], minlength=6)
+        assert got.sum() == 70
+        n_gesture = len(present) - 1
+        unit = 70 / (n_gesture + 2)  # The no-gesture class counts twice.
+        assert abs(got[0] - 2 * unit) <= 1 and all(abs(got[c] - unit) <= 1 for c in present[1:])
+        assert all(got[c] == 0 for c in range(6) if c not in present)
