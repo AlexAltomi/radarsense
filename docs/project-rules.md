@@ -120,8 +120,27 @@ verified.
 **Output to the app.**
 
 - Wire format: frames of 3×32×32 uint8 values. A binary frame has a 16-byte header followed by 3,072 bytes of data,
-  3,088 bytes in total. The header holds a uint32 sequence number, a uint64 server timestamp in milliseconds, a uint8
-  true label (255 if unknown) and 3 reserved bytes.
+  3,088 bytes in total. The header is little-endian (struct format `<IQBB2x`) and holds, in this order: a uint32
+  sequence number, a uint64 server timestamp in milliseconds, a uint8 true label (255 if unknown), a uint8 flags byte
+  and 2 reserved bytes. Bit 0 of the flags is set on the first frame of every clip, including the first frame after a
+  `start`. It marks a discontinuity (the frames before it and after it do not belong together). **Android rule:** when
+  bit 0 is set, clear the frame buffer before adding the frame, so that no window of 32 frames mixes frames from two
+  clips. The other flag bits are 0 and are ignored. The sequence number keeps counting across clips, so it does not
+  show the discontinuity.
+- Replay protocol: one WebSocket, `/ws/stream`. Messages from the app are JSON text.
+  - `{"type": "start", "user": "user3" | "any", "gesture": "any" | "background" | <class name>, "loop": true}` starts
+    a stream (and restarts it if one is running). `"any"` as a user means the validation users only. A cached train
+    user streams only when named. `"background"` streams only frames outside the zone `[s-20, s+L+9]` of their
+    recording.
+  - `{"type": "stop"}` stops the stream.
+  - `{"type": "session", "fps": 33, "shape": [3, 32, 32], "encoding": "uint8", "classes": [...]}` is sent after each
+    accepted `start`, before the first binary frame.
+  - `{"type": "stopped"}` is the reply to `stop`. It is sent also when no stream was running. Frames that were already
+    sent can arrive before it.
+  - `{"type": "ended"}` is sent when a stream with `"loop": false` has played one recording. No binary frame follows.
+  - `{"type": "error", "message": "..."}` answers a bad request: an unknown user or gesture, a user or gesture with no
+    matching recording, a field of the wrong type, invalid JSON, a binary message from the app, or an unknown `type`.
+    The connection stays open, and a running stream keeps running.
 - Detector: inference runs every 4 frames. A gesture is accepted when the last 2 predictions agree and the
   confidence is at least 0.8. After an accepted gesture there is a cooldown of 600 ms, and the detector re-arms
   after one "no gesture" prediction. Inference never runs on the Android main thread.
