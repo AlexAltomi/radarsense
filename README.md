@@ -74,3 +74,16 @@ The tests use small synthetic data and do not need the dataset. Pyright is insta
 - targetSdk = 34 on purpose: apps targeting API 37+ are blocked from local-network
   addresses (ACCESS_LOCAL_NETWORK, Android 17), and the replay server is reached
   over the local network. Revisit only if the app ever needs to target 37+.
+
+### Watching the replay stream on the emulator
+1. Start the replay server in its own PowerShell terminal from the repository root (the cache in `data/processed`
+   must exist):
+   ```
+   $env:PYTHONPATH = "dsp;backend\replay"
+   .venv\Scripts\python.exe -m uvicorn replay.main:app --port 8001
+   ```
+2. Start the emulator and run the app from Android Studio.
+3. On the Connect screen, keep the default URL `ws://10.0.2.2:8001/ws/stream` and press Start. The Live screen then
+   shows channel 0 as a heatmap, the expected class from the frame header, and the measured frame rate (about 33 fps).
+
+The app unit tests run with `cd android` and `gradlew.bat testDebugUnitTest`.
