@@ -1,6 +1,6 @@
 """Evaluate a cnn-v1 checkpoint on the validation users and write training/results/cnn.md.
 
-Usage: python training/eval.py [--checkpoint FILE] [--out FILE] [--figure FILE]
+Usage: python training/eval.py [--checkpoint FILE] [--model-name NAME] [--out FILE] [--figure FILE]
 
 Only the validation users user3 and user5 are loaded. The loader refuses the test users, and this script never refers
 to them. The report has the same layout as training/results/baseline.md and adds a comparison with the two baselines
@@ -158,7 +158,12 @@ def main(argv: list[str] | None = None) -> int:
         "--log", type=Path, default=None,
         help="log.csv of the training run (default: training/runs/<run>/log.csv, where <run> is the folder name of the checkpoint)",
     )
+    ap.add_argument(
+        "--model-name", default=None,
+        help="the name used in the stamps and the report headings (default: the folder name of the checkpoint)",
+    )
     args = ap.parse_args(argv)
+    model_name = args.model_name or args.checkpoint.resolve().parent.name
     log = args.log or RUNS / args.checkpoint.parent.name / "log.csv"
     if not log.exists():
         print(f"ERROR: The training log {log} does not exist. Pass --log with the log.csv of the run.", file=sys.stderr)
@@ -176,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     members = load_complete_members(args.cache, splits)
     cache_id = index_digest(members)
     commit = build_commit()
-    stamp = f"commit `{commit}` · cache `{cache_id}` · model `{MODEL_NAME}`"
+    stamp = f"commit `{commit}` · cache `{cache_id}` · model `{model_name}`"
     if cache_id != ckpt["cache_id"]:
         print(f"WARNING: The checkpoint was trained on cache {ckpt['cache_id']}, but the cache is now {cache_id}.")
 
@@ -195,11 +200,11 @@ def main(argv: list[str] | None = None) -> int:
     }
     group_res = {name: evaluate(y[mask], pred[mask]) | {"windows": int(mask.sum())} for name, mask in groups.items()}
 
-    confusion_figure(res["confusion"], args.figure, f"{MODEL_NAME}, validation users user3 and user5\n{stamp.replace('`', '')}")
+    confusion_figure(res["confusion"], args.figure, f"{model_name}, validation users user3 and user5\n{stamp.replace('`', '')}")
     baselines = read_baseline(args.baseline)
 
     s = f"({stamp})"
-    out = [f"# {MODEL_NAME}: per-frame CNN with a temporal head", ""]
+    out = [f"# {model_name}: per-frame CNN with a temporal head", ""]
     out += [f"This report was produced at {stamp}.", ""]
     out += [
         (
@@ -211,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     ]
     note = "The mapping is defined only in `dsp/radarsense_dsp/windows.py`. Not yet verified: the real gesture names."
     out += ["## Class map", "", f"`{class_map_json()}`. {note}", ""]
-    out += [f"## {MODEL_NAME}", "", f"These results were produced at {stamp}.", ""]
+    out += [f"## {model_name}", "", f"These results were produced at {stamp}.", ""]
     out += [f"- overall accuracy: {res['accuracy']:.4f}", f"- macro-F1 (classes present in val): {res['macro_f1']:.4f} (epoch {ckpt['epoch']}, chosen on the validation users)", ""]
     out += [f"Per-class recall {s}:", "", "| class | recall | val windows |", "|---|---|---|"]
     out += [f"| {cls_label(c)} | {fmt(res['recall'][c])} | {res['support'][c]} |" for c in range(N_CLASSES)]
@@ -235,21 +240,21 @@ def main(argv: list[str] | None = None) -> int:
         "|---|---|---|---|---|---|",
     ]
     out.append(
-        f"| {MODEL_NAME} | {res['accuracy']:.4f} | {res['macro_f1']:.4f} | {users[3][0]:.4f} | {users[5][0]:.4f} | {stamp} |"
+        f"| {model_name} | {res['accuracy']:.4f} | {res['macro_f1']:.4f} | {users[3][0]:.4f} | {users[5][0]:.4f} | {stamp} |"
     )
     for name, b in baselines.items():
         out.append(
             f"| {name} | {b['accuracy']:.4f} | {b['macro_f1']:.4f} | {b['users'].get(3, float('nan')):.4f} | "
             f"{b['users'].get(5, float('nan')):.4f} | {b['stamp']} · model `{name}` |"
         )
-    out += ["", f"Per-class recall {s}:", "", "| class | " + " | ".join([MODEL_NAME, *baselines]) + " |"]
+    out += ["", f"Per-class recall {s}:", "", "| class | " + " | ".join([model_name, *baselines]) + " |"]
     out.append("|" + "---|" * (2 + len(baselines)))
     for c in range(N_CLASSES):
         cells = [fmt(res["recall"][c]), *(b["recall"][c] or "n/a" for b in baselines.values())]
         out.append(f"| {cls_label(c)} | " + " | ".join(cells) + " |")
     for name, b in baselines.items():
         out.append("")
-        out.append(f"{MODEL_NAME} minus {name} in macro-F1: {res['macro_f1'] - b['macro_f1']:+.4f}.")
+        out.append(f"{model_name} minus {name} in macro-F1: {res['macro_f1'] - b['macro_f1']:+.4f}.")
 
     out += ["", "## Windows inside the rule and near its edge", ""]
     out += [
@@ -276,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     out.append("")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("\n".join(out), encoding="utf-8")
-    print(f"{MODEL_NAME}: accuracy {res['accuracy']:.4f}, macro-F1 {res['macro_f1']:.4f}.")
+    print(f"{model_name}: accuracy {res['accuracy']:.4f}, macro-F1 {res['macro_f1']:.4f}.")
     for name, g in group_res.items():
         print(f"  {name}: {g['windows']} windows, macro-F1 {g['macro_f1']:.4f}.")
     print(f"Wrote {args.out} and {args.figure}.")

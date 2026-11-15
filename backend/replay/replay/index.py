@@ -104,8 +104,9 @@ class ReplayIndex:
             mask &= self.recs["cls"] == CLASS_NAMES.index(gesture)
         candidates = np.flatnonzero(mask)
         if len(candidates) == 0:
-            what = f"a background run of at least {WINDOW} frames" if background else "a recording"
-            raise ReplayError(f"No {what} matches user {user!r} and gesture {gesture!r}.")
+            if background:  # The gesture is "background" here, so the message leaves it out.
+                raise ReplayError(f"No background run of at least {WINDOW} frames matches user {user!r}.")
+            raise ReplayError(f"No recording matches user {user!r} and gesture {gesture!r}.")
         return self.recs[int(rng.choice(candidates))], background
 
     def _users_for(self, user: str) -> list[int]:

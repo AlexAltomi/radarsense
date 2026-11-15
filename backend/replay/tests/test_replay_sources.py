@@ -98,6 +98,7 @@ def test_a_user_with_only_short_background_runs_gets_an_error(tmp_path):
     cache = write_cache(tmp_path / "c", {"user3_e1": (3, 1, None, "complete", [(2, 30, 30)])})
     idx = ReplayIndex(cache, SPLITS)
     assert idx.background_frames.tolist() == [0]
-    with pytest.raises(ReplayError, match="background run"):
+    with pytest.raises(ReplayError) as e:
         next_clip(idx, np.random.default_rng(0), "user3", "background")
+    assert str(e.value) == f"No background run of at least {WINDOW} frames matches user 'user3'."
     next_clip(idx, np.random.default_rng(0), "user3", "any")  # gestures still work
