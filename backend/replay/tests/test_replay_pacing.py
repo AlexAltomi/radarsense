@@ -49,7 +49,7 @@ def test_stream_runs_at_33_fps_with_a_30_3_ms_mean_interval(server_url):
             if now - t0 >= DURATION_S:
                 break
             arrivals.append(now)
-            seqs.append(codec.unpack_frame(message)[0])
+            seqs.append(codec.unpack_frame(message).seq)
         ws.send(json.dumps({"type": "stop"}))
     assert seqs == list(range(len(seqs)))  # no frame is dropped or reordered, also across clip boundaries
     fps = len(arrivals) / DURATION_S

@@ -43,7 +43,7 @@ from radarsense_dsp.windows import (
 
 CACHE = ROOT / "data" / "processed"
 SPLITS = ROOT / "training" / "splits.json"
-LOG = ROOT / "training" / "runs" / f"{MODEL_NAME}-seed0" / "log.csv"
+RUNS = ROOT / "training" / "runs"
 CHECKPOINT = ROOT / "training" / "checkpoints" / f"{MODEL_NAME}-seed0" / "best.pt"
 OUT = ROOT / "training" / "results" / "cnn.md"
 FIGURE = ROOT / "training" / "figures" / "cnn_confusion.png"
@@ -154,8 +154,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--figure", type=Path, default=FIGURE)
     ap.add_argument("--baseline", type=Path, default=BASELINE)
-    ap.add_argument("--log", type=Path, default=LOG, help="log.csv of the training run")
+    ap.add_argument(
+        "--log", type=Path, default=None,
+        help="log.csv of the training run (default: training/runs/<run>/log.csv, where <run> is the folder name of the checkpoint)",
+    )
     args = ap.parse_args(argv)
+    log = args.log or RUNS / args.checkpoint.parent.name / "log.csv"
+    if not log.exists():
+        print(f"ERROR: The training log {log} does not exist. Pass --log with the log.csv of the run.", file=sys.stderr)
+        return 2
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=True)
@@ -216,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     out += [f"Accuracy for each validation user {s}:", "", "| user | accuracy | windows |", "|---|---|---|"]
     out += [f"| user{u} | {acc:.4f} | {n} |" for u, (acc, n) in sorted(users.items())]
 
-    out += history_markdown(args.log, ckpt["epoch"])
+    out += history_markdown(log, ckpt["epoch"])
     out += ["", "## Comparison with the baselines", ""]
     out += [
         (

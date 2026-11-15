@@ -5,7 +5,7 @@ import numpy as np
 
 from radarsense_dsp.windows import CLASS_MAP
 from replay import codec
-from replay.index import ReplayIndex, background_ranges
+from replay.index import ReplayIndex, usable_background_runs
 
 _LABEL_LUT = np.full(256, codec.UNKNOWN_LABEL, dtype=np.uint8)
 for _target, _cls in CLASS_MAP.items():
@@ -31,7 +31,7 @@ def load_clip(index: ReplayIndex, rec: np.void, background: bool, rng: np.random
     member, r = int(rec["member"]), int(rec["recording"])
     lo, hi = 0, 100
     if background:
-        ranges = background_ranges(int(rec["s"]), int(rec["length"]))
+        ranges = usable_background_runs(int(rec["s"]), int(rec["length"]))
         chosen = ranges[int(rng.choice(len(ranges), p=np.array([len(x) for x in ranges]) / sum(map(len, ranges))))]
         lo, hi = chosen.start, chosen.stop
     frames = codec.encode_frames(index.reader.recording(member, r)[lo:hi].astype(np.float32))

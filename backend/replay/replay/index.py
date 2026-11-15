@@ -13,6 +13,7 @@ from radarsense_dsp.windows import (
     CLASS_MAP,
     CLASS_NAMES,
     FRAMES,
+    WINDOW,
     CacheMember,
     CacheReader,
     far_span,
@@ -50,6 +51,11 @@ def background_ranges(s: int, length: int) -> list[range]:
     return [r for r in out if len(r) > 0]
 
 
+def usable_background_runs(s: int, length: int) -> list[range]:
+    """Return the background runs that fill the detector buffer: only runs of at least WINDOW frames."""
+    return [r for r in background_ranges(s, length) if len(r) >= WINDOW]
+
+
 class ReplayIndex:
     def __init__(self, cache_dir: str | Path, splits: dict):
         self.cache_dir = Path(cache_dir)
@@ -73,7 +79,7 @@ class ReplayIndex:
                 rows.append((member_id, r, m.user, key[1], label, CLASS_MAP[label], s, length))
         self.recs = np.array(rows, dtype=REC_DTYPE)
         self.background_frames = np.array(
-            [sum(len(r) for r in background_ranges(int(x["s"]), int(x["length"]))) for x in self.recs], dtype=np.int32
+            [sum(len(r) for r in usable_background_runs(int(x["s"]), int(x["length"]))) for x in self.recs], dtype=np.int32
         )
         self.users = sorted({int(u) for u in np.unique(self.recs["user"])})
 
@@ -98,7 +104,8 @@ class ReplayIndex:
             mask &= self.recs["cls"] == CLASS_NAMES.index(gesture)
         candidates = np.flatnonzero(mask)
         if len(candidates) == 0:
-            raise ReplayError(f"No recording matches user {user!r} and gesture {gesture!r}.")
+            what = f"a background run of at least {WINDOW} frames" if background else "a recording"
+            raise ReplayError(f"No {what} matches user {user!r} and gesture {gesture!r}.")
         return self.recs[int(rng.choice(candidates))], background
 
     def _users_for(self, user: str) -> list[int]:
