@@ -1,10 +1,15 @@
 import numpy as np
 import pytest
-from conftest import SPLITS
+from conftest import SPLITS, write_cache
 
-from radarsense_dsp.windows import CLASS_MAP, CLASS_NAMES, far_span
+from radarsense_dsp.windows import CLASS_MAP, CLASS_NAMES, WINDOW, far_span
 from replay import codec
-from replay.index import ReplayIndex, background_ranges
+from replay.index import (
+    ReplayError,
+    ReplayIndex,
+    background_ranges,
+    usable_background_runs,
+)
 from replay.sources import labels_from_targets, load_clip, next_clip
 
 
@@ -54,7 +59,8 @@ def test_background_frames_never_fall_inside_the_extended_span(index):
         clip = load_clip(index, rec, True, rng)
         lo, hi = far_span(int(rec["s"]), int(rec["length"]))
         frames = frame_numbers(clip)
-        assert len(frames) > 0
+        assert len(frames) >= WINDOW  # only runs that fill the detector buffer are streamed
+        assert len(frames) == len(clip.labels)
         assert ((frames < lo) | (frames > hi)).all()
         assert clip.first_frame == frames[0]
         assert (clip.labels == 0).all()  # outside the gesture, the target is 0 and CLASS_MAP[0] is 0
@@ -67,3 +73,31 @@ def test_next_clip_for_a_named_gesture(index):
     clip = next_clip(index, np.random.default_rng(2), "user3", CLASS_NAMES[3])
     assert len(clip.frames) == 100
     assert set(np.unique(clip.labels).tolist()) == {0, 3}
+
+
+def test_usable_background_runs_keep_only_runs_of_at_least_one_window():
+    assert [(r.start, r.stop) for r in usable_background_runs(40, 8)] == [(58, 100)]  # the run 0..19 is too short
+    assert [(r.start, r.stop) for r in usable_background_runs(50, 8)] == [(68, 100)]  # exactly WINDOW frames is kept
+    assert [(r.start, r.stop) for r in usable_background_runs(30, 30)] == []  # the only run has 30 frames
+    assert all(len(r) >= WINDOW for s, n in [(5, 8), (60, 10), (35, 8)] for r in usable_background_runs(s, n))
+    assert len(usable_background_runs(50, 8)[0]) == WINDOW
+
+
+def test_both_usable_runs_of_a_recording_are_used_and_short_ones_never(tmp_path):
+    # s=55, L=3: the zone is 35..67, so the runs are 0..34 (35 frames) and 68..99 (32 frames). Both are usable.
+    cache = write_cache(tmp_path / "c", {"user3_e1": (3, 1, None, "complete", [(2, 55, 3)])})
+    idx = ReplayIndex(cache, SPLITS)
+    rng = np.random.default_rng(0)
+    starts = [load_clip(index=idx, rec=idx.recs[0], background=True, rng=rng).first_frame for _ in range(200)]
+    assert set(starts) == {0, 68}
+    assert 0.4 < starts.count(0) / 200 < 0.7  # chosen by length: 35 of 67 frames
+
+
+def test_a_user_with_only_short_background_runs_gets_an_error(tmp_path):
+    # s=30, L=30: the zone is 10..69, so the only run is 70..99 with 30 frames, which is shorter than WINDOW.
+    cache = write_cache(tmp_path / "c", {"user3_e1": (3, 1, None, "complete", [(2, 30, 30)])})
+    idx = ReplayIndex(cache, SPLITS)
+    assert idx.background_frames.tolist() == [0]
+    with pytest.raises(ReplayError, match="background run"):
+        next_clip(idx, np.random.default_rng(0), "user3", "background")
+    next_clip(idx, np.random.default_rng(0), "user3", "any")  # gestures still work

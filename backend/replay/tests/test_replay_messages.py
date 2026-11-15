@@ -2,6 +2,7 @@ import json
 
 import numpy as np
 import pytest
+from conftest import SPLITS, write_cache
 from fastapi.testclient import TestClient
 
 from radarsense_dsp.windows import CLASS_NAMES
@@ -201,3 +202,15 @@ def test_a_rejected_start_does_not_stop_a_running_stream(client):
                 seqs.append(codec.unpack_frame(event["bytes"]).seq)
         assert seqs == list(range(before + 1, before + 1 + len(seqs)))  # no gap and no restart at seq 0
         assert recv_frames(ws, 1)[0].seq == before + len(seqs) + 1
+
+
+def test_background_without_a_usable_run_gives_an_error_message(tmp_path):
+    cache = write_cache(tmp_path / "cache", {"user3_e1": (3, 1, None, "complete", [(2, 30, 30)])})
+    splits = tmp_path / "splits.json"
+    splits.write_text(json.dumps(SPLITS), encoding="utf-8")
+    with TestClient(create_app(cache, splits)) as c, c.websocket_connect("/ws/stream") as ws:
+        ws.send_json({"type": "start", "user": "user3", "gesture": "background"})
+        reply = ws.receive_json()
+        assert reply["type"] == "error" and "background run" in reply["message"]
+        ws.send_json({"type": "start", "user": "user3", "gesture": "any", "loop": False})  # the connection survives
+        assert ws.receive_json()["type"] == "session"

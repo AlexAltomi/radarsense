@@ -131,7 +131,8 @@ verified.
   - `{"type": "start", "user": "user3" | "any", "gesture": "any" | "background" | <class name>, "loop": true}` starts
     a stream (and restarts it if one is running). `"any"` as a user means the validation users only. A cached train
     user streams only when named. `"background"` streams only frames outside the zone `[s-20, s+L+9]` of their
-    recording.
+    recording, and only runs of at least 32 frames (one detector window). Shorter runs are never streamed. A user with
+    no such run gets an `error` message.
   - `{"type": "stop"}` stops the stream.
   - `{"type": "session", "fps": 33, "shape": [3, 32, 32], "encoding": "uint8", "classes": [...]}` is sent after each
     accepted `start`, before the first binary frame.
