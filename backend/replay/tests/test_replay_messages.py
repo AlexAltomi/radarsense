@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -33,9 +35,9 @@ def test_start_sends_session_then_binary_frames(client):
             "classes": list(CLASS_NAMES),
         }
         frames = recv_frames(ws, 5)
-        assert [f[0] for f in frames] == [0, 1, 2, 3, 4]
-        assert all(f[3].shape == (3, 32, 32) for f in frames)
-        assert all(f[2] in range(6) for f in frames)
+        assert [f.seq for f in frames] == [0, 1, 2, 3, 4]
+        assert all(f.frame.shape == (3, 32, 32) for f in frames)
+        assert all(f.label in range(6) for f in frames)
 
 
 def test_each_frame_message_is_3088_bytes(client):
@@ -58,7 +60,7 @@ def test_stop_ends_the_stream_and_the_connection_stays_usable(client):
         assert event["text"] == '{"type":"stopped"}'
         ws.send_json({"type": "start", "user": "user5"})
         assert ws.receive_json()["type"] == "session"
-        assert recv_frames(ws, 1)[0][0] == 0  # a new stream starts at seq 0
+        assert recv_frames(ws, 1)[0].seq == 0  # a new stream starts at seq 0
 
 
 def test_without_loop_one_recording_is_played_then_ended(client):
@@ -66,7 +68,7 @@ def test_without_loop_one_recording_is_played_then_ended(client):
         ws.send_json({"type": "start", "user": "user3", "gesture": CLASS_NAMES[2], "loop": False})
         assert ws.receive_json()["type"] == "session"
         frames = recv_frames(ws, 100)
-        assert [f[0] for f in frames] == list(range(100))
+        assert [f.seq for f in frames] == list(range(100))
         assert ws.receive_json() == {"type": "ended"}
 
 
@@ -74,7 +76,7 @@ def test_gesture_frames_carry_the_true_label(client):
     with client.websocket_connect("/ws/stream") as ws:
         ws.send_json({"type": "start", "user": "user3", "gesture": CLASS_NAMES[3], "loop": False})
         ws.receive_json()
-        labels = [f[2] for f in recv_frames(ws, 100)]
+        labels = [f.label for f in recv_frames(ws, 100)]
         assert set(labels) == {0, 3}
         assert labels.count(3) == 8
 
@@ -84,10 +86,10 @@ def test_background_frames_have_label_zero_and_skip_the_gesture(client):
         ws.send_json({"type": "start", "user": "user3", "gesture": "background", "loop": True})
         ws.receive_json()
         frames = recv_frames(ws, 60)
-        assert {f[2] for f in frames} == {0}
-        numbers = np.rint(codec.decode_frames(np.stack([f[3] for f in frames]))[:, 0, 0, 0] * 99)
-        # The zones [s-20, s+L+9] of the four user3 recordings all contain frames 30 to 57.
-        assert not ((numbers >= 30) & (numbers <= 57)).any()
+        assert {f.label for f in frames} == {0}
+        numbers = np.rint(codec.decode_frames(np.stack([f.frame for f in frames]))[:, 0, 0, 0] * 99)
+        # The zones [s-20, s+L+9] of the four user3 recordings all contain frames 30 to 52 (the zones are 20-57, 25-62, 15-52 and 30-67).
+        assert not ((numbers >= 30) & (numbers <= 52)).any()
 
 
 @pytest.mark.parametrize(
@@ -146,3 +148,56 @@ def test_disconnect_while_streaming_is_clean(client):
     with client.websocket_connect("/ws/stream") as ws:
         ws.send_json({"type": "stop"})
         assert ws.receive_json() == {"type": "stopped"}
+
+
+def test_the_first_frame_after_a_start_has_the_clip_start_flag(client):
+    with client.websocket_connect("/ws/stream") as ws:
+        for _ in range(2):  # a start, then a restart without a stop
+            ws.send_json({"type": "start", "user": "user3", "loop": True})
+            while True:  # frames of the previous stream can arrive before the new session message
+                event = ws.receive()
+                if event.get("text") is not None:
+                    assert json.loads(event["text"])["type"] == "session"
+                    break
+            first, second = recv_frames(ws, 2)
+            assert first.seq == 0 and first.flags == codec.FLAG_CLIP_START and first.clip_start
+            assert second.flags == 0 and not second.clip_start
+
+
+def test_only_the_first_frame_of_each_clip_is_flagged(client):
+    with client.websocket_connect("/ws/stream") as ws:
+        ws.send_json({"type": "start", "user": "user3", "gesture": "any", "loop": True})
+        ws.receive_json()
+        frames = recv_frames(ws, 250)
+        # Every clip of a gesture or user source is a whole recording of 100 frames. The sequence continues across
+        # clips, so the flag is the only sign of the jump.
+        assert [f.seq for f in frames if f.clip_start] == [0, 100, 200]
+        assert all(f.flags in (0, codec.FLAG_CLIP_START) for f in frames)
+
+
+def test_background_clips_are_flagged_at_every_clip_start(client):
+    with client.websocket_connect("/ws/stream") as ws:
+        ws.send_json({"type": "start", "user": "user3", "gesture": "background", "loop": True})
+        ws.receive_json()
+        frames = recv_frames(ws, 200)
+        starts = [f.seq for f in frames if f.clip_start]
+        assert starts[0] == 0 and len(starts) >= 3  # the background stretches of user3 are 20 to 50 frames long
+
+
+def test_a_rejected_start_does_not_stop_a_running_stream(client):
+    with client.websocket_connect("/ws/stream") as ws:
+        ws.send_json({"type": "start", "user": "user3", "loop": True})
+        ws.receive_json()
+        before = recv_frames(ws, 2)[-1].seq
+        ws.send_json({"type": "start", "user": "user99"})
+        ws.send_json({"type": "start", "loop": "yes"})
+        errors = 0
+        seqs = []
+        while errors < 2:
+            event = ws.receive()
+            if event.get("text") is not None:
+                errors += '"error"' in event["text"]
+            else:
+                seqs.append(codec.unpack_frame(event["bytes"]).seq)
+        assert seqs == list(range(before + 1, before + 1 + len(seqs)))  # no gap and no restart at seq 0
+        assert recv_frames(ws, 1)[0].seq == before + len(seqs) + 1

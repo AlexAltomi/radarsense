@@ -5,7 +5,8 @@ App -> server (JSON text):
   {"type": "stop"}
 Server -> app:
   {"type": "session", "fps": 33, "shape": [3, 32, 32], "encoding": "uint8", "classes": [...]}  before the first frame
-  one binary frame (see replay.codec) every 1/33 s
+  one binary frame (see replay.codec) every 1/33 s. Bit 0 of the header flags marks the first frame of every clip, which
+  includes the first frame after a start. It is a discontinuity, so the app clears its frame buffer.
   {"type": "stopped"} after "stop", {"type": "ended"} when a stream with loop=false has played one recording,
   {"type": "error", "message": ...} for a bad request. The connection stays open after an error.
 
@@ -67,12 +68,12 @@ class Client:
                 await task
 
     async def start(self, user: str, gesture: str, loop: bool) -> None:
-        await self.stop_stream()
-        try:
+        try:  # A rejected start leaves a running stream alone.
             first = await asyncio.to_thread(next_clip, self.index, self.rng, user, gesture)
         except ReplayError as e:
             await self.error(str(e))
             return
+        await self.stop_stream()
         await self.send_json(session_message())
         self.task = asyncio.create_task(self._stream(first, user, gesture, loop))
 
@@ -91,7 +92,10 @@ class Client:
                         await asyncio.sleep(delay)
                     elif delay < -MAX_LAG_S:
                         start = now - seq * INTERVAL_S
-                    message = codec.pack_frame(seq, time.time_ns() // 1_000_000, int(clip.labels[i]), clip.frames[i])
+                    flags = codec.FLAG_CLIP_START if i == 0 else 0  # The first frame of every clip is a discontinuity.
+                    message = codec.pack_frame(
+                        seq, time.time_ns() // 1_000_000, int(clip.labels[i]), clip.frames[i], flags
+                    )
                     async with self._send_lock:
                         await self.ws.send_bytes(message)
                     seq += 1

@@ -12,22 +12,24 @@ def test_sizes():
 
 def test_header_is_little_endian_with_the_documented_layout():
     msg = codec.pack_frame(0x01020304, 0x1122334455667788, 7, bytes(3072))
+    assert codec.pack_frame(0, 0, 0, bytes(3072), codec.FLAG_CLIP_START)[13] == 1
     assert len(msg) == 3088
     assert msg[:4] == bytes([4, 3, 2, 1])
     assert msg[4:12] == bytes([0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11])
     assert msg[12] == 7
-    assert msg[13:16] == bytes(3)
+    assert msg[13] == 0
+    assert msg[14:16] == bytes(2)
 
 
 def test_pack_unpack_roundtrip():
     payload = np.arange(3072, dtype=np.uint32).astype(np.uint8).reshape(3, 32, 32)
-    seq, ms, label, frame = codec.unpack_frame(codec.pack_frame(123456, 1_700_000_000_123, 255, payload))
-    assert (seq, ms, label) == (123456, 1_700_000_000_123, 255)
+    seq, ms, label, flags, frame = codec.unpack_frame(codec.pack_frame(123456, 1_700_000_000_123, 255, payload, 1))
+    assert (seq, ms, label, flags) == (123456, 1_700_000_000_123, 255, 1)
     assert np.array_equal(frame, payload)
 
 
 def test_sequence_wraps_at_32_bits():
-    seq, *_ = codec.unpack_frame(codec.pack_frame(2**32 + 5, 0, 0, bytes(3072)))
+    seq = codec.unpack_frame(codec.pack_frame(2**32 + 5, 0, 0, bytes(3072))).seq
     assert seq == 5
 
 
