@@ -5,7 +5,7 @@ import pytest
 from conftest import SPLITS, write_cache
 from fastapi.testclient import TestClient
 
-from radarsense_dsp.windows import CLASS_NAMES
+from radarsense_dsp.windows import CLASS_NAMES, WINDOW
 from replay import codec
 from replay.server import create_app
 
@@ -211,6 +211,8 @@ def test_background_without_a_usable_run_gives_an_error_message(tmp_path):
     with TestClient(create_app(cache, splits)) as c, c.websocket_connect("/ws/stream") as ws:
         ws.send_json({"type": "start", "user": "user3", "gesture": "background"})
         reply = ws.receive_json()
-        assert reply["type"] == "error" and "background run" in reply["message"]
+        assert reply == {
+            "type": "error", "message": f"No background run of at least {WINDOW} frames matches user 'user3'."
+        }
         ws.send_json({"type": "start", "user": "user3", "gesture": "any", "loop": False})  # the connection survives
         assert ws.receive_json()["type"] == "session"
