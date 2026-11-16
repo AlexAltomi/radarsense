@@ -2,6 +2,7 @@ package com.radarsense.app.ui.stream
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.radarsense.app.data.net.FrameSource
 import com.radarsense.app.data.net.FrameStreamClient
 import com.radarsense.app.data.net.ServerMessage
 import com.radarsense.app.data.net.StartRequest
@@ -50,7 +51,7 @@ data class StreamUiState(
  * reads [state], which changes a few times per second, and [latestFrame], which changes on every frame.
  */
 class StreamViewModel(
-    private val client: FrameStreamClient = FrameStreamClient(),
+    private val source: FrameSource = FrameStreamClient(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(StreamUiState())
     val state: StateFlow<StreamUiState> = _state.asStateFlow()
@@ -84,7 +85,7 @@ class StreamViewModel(
             previous?.cancelAndJoin()
             resetCounters()
             _state.update { it.copy(status = StreamStatus.Connecting, expected = "-", fps = 0.0) }
-            client.stream(url, request)
+            source.stream(url, request)
                 .retryWhen { cause, attempt ->
                     if (cause !is IOException) return@retryWhen false
                     val reason = cause.message ?: cause::class.java.simpleName
