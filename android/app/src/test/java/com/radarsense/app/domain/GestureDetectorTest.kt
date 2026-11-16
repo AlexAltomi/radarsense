@@ -116,18 +116,31 @@ class GestureDetectorTest {
     }
 
     @Test
-    fun resetKeepsTheCooldown() {
+    fun resetReArmsButKeepsTheCooldown() {
         val d = GestureDetector()
         d.onPrediction(g, 0.95f, ms(0))
         assertEquals(g, d.onPrediction(g, 0.95f, ms(100))) // the cooldown ends at 700 ms
         d.reset()
-        assertNull(d.onPrediction(none, 0.95f, ms(300)))
+        // Re-armed, but the cooldown still applies.
         assertNull(d.onPrediction(g, 0.95f, ms(400)))
         assertNull(d.onPrediction(g, 0.95f, ms(500)))
-        // Still not armed: the "none" came inside the cooldown. A "none" after it arms the detector again.
-        assertNull(d.onPrediction(none, 0.95f, ms(800)))
+        assertNull(d.onPrediction(g, 0.95f, ms(699)))
+        // After the cooldown the detector fires again on two new predictions, without a "none" in between.
+        assertNull(d.onPrediction(g, 0.95f, ms(700)))
+        assertEquals(g, d.onPrediction(g, 0.95f, ms(800)))
+    }
+
+    @Test
+    fun resetAfterTheCooldownLetsTheNextGestureFireWithoutANone() {
+        val d = GestureDetector()
+        d.onPrediction(g, 0.95f, ms(0))
+        assertEquals(g, d.onPrediction(g, 0.95f, ms(100)))
+        // The cooldown passes and only gestures arrive: the detector stays disarmed.
+        assertNull(d.onPrediction(g, 0.95f, ms(800)))
         assertNull(d.onPrediction(g, 0.95f, ms(900)))
-        assertEquals(g, d.onPrediction(g, 0.95f, ms(1000)))
+        d.reset() // the frame buffer was cleared: a new clip starts
+        assertNull(d.onPrediction(g, 0.95f, ms(1000)))
+        assertEquals(g, d.onPrediction(g, 0.95f, ms(1100)))
     }
 
     @Test

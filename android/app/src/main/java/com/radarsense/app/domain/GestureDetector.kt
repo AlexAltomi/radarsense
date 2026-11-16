@@ -7,7 +7,7 @@ package com.radarsense.app.domain
  * - A gesture G is accepted when the last 2 predictions are both G, G is not "none" (class 0), and both have a
  *   confidence of at least [threshold].
  * - It fires once. Then everything is ignored for [cooldownNanos].
- * - After that the detector is armed again only by one "none" prediction that arrives after the cooldown.
+ * - After that the detector is armed again by one "none" prediction that arrives after the cooldown, or by [reset].
  *
  * Time is passed in by the caller as nanoseconds, so tests do not need a clock. Use one time source that never goes
  * backwards, for example System.nanoTime().
@@ -51,11 +51,14 @@ class GestureDetector(
     }
 
     /**
-     * Forgets the earlier predictions. Call it when the frame buffer is cleared, because the next prediction belongs
-     * to a different stretch of frames. The cooldown and the armed state stay as they are.
+     * Forgets the earlier predictions and re-arms the detector. Call it when the frame buffer is cleared: the next
+     * prediction then comes from 32 new frames (about 1 s later), so the gesture that fired before cannot fire again,
+     * and a gesture early in the next clip must not be lost because the gesture of the previous clip came late.
+     * The cooldown still applies: nothing fires until it is over.
      */
     fun reset() {
         hasPrevious = false
+        armed = true
     }
 
     companion object {
