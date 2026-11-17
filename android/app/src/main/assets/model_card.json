@@ -1,0 +1,175 @@
+{
+  "version": "cnn-v1-e12",
+  "model": "cnn-v1",
+  "input": {
+    "shape": [
+      1,
+      32,
+      3,
+      32,
+      32
+    ],
+    "layout": "(batch, frame, channel, range, Doppler); NCHW inside each frame",
+    "dtype": "float32",
+    "frames_per_window": 32,
+    "wire_dtype": "uint8"
+  },
+  "output": {
+    "shape": [
+      1,
+      6
+    ],
+    "kind": "logits"
+  },
+  "classes": [
+    "none",
+    "label1",
+    "label2",
+    "label3",
+    "label6",
+    "label7"
+  ],
+  "label_to_class": {
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "6": 4,
+    "7": 5
+  },
+  "uint8_decode": {
+    "channel_0": {
+      "formula": "x = u / 255",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    "channel_1": {
+      "formula": "x = u / 255 * 2 - 1",
+      "range": [
+        -1.0,
+        1.0
+      ]
+    },
+    "channel_2": {
+      "formula": "x = u / 255 * 2 - 1",
+      "range": [
+        -1.0,
+        1.0
+      ]
+    }
+  },
+  "db_range": {
+    "db_min": 24.38,
+    "db_max": 62.35,
+    "pair_a": [
+      0,
+      2
+    ],
+    "pair_b": [
+      1,
+      2
+    ],
+    "source": "dsp/radarsense_dsp/constants.json",
+    "source_commit": "c6381f842ddecdbe1b6b428bd5c05ae3e63d9be7",
+    "source_users": [
+      1,
+      2,
+      4,
+      6,
+      7,
+      8,
+      9,
+      11
+    ]
+  },
+  "dataset": {
+    "doi": "10.5281/zenodo.15178095",
+    "license": "CC BY 4.0"
+  },
+  "validation": {
+    "users": [
+      "user3",
+      "user5"
+    ],
+    "windows": 1000,
+    "selection": "class-balanced, seed 0, after the uint8 wire round trip",
+    "checkpoint_epoch": 4,
+    "checkpoint_val_macro_f1": 0.9448057115240878,
+    "models": {
+      "pytorch": {
+        "accuracy": 0.931,
+        "macro_f1": 0.9308366022714059,
+        "recall": [
+          0.9580838323353293,
+          0.9820359281437125,
+          0.9700598802395209,
+          0.9041916167664671,
+          0.7831325301204819,
+          0.9879518072289156
+        ]
+      },
+      "fp32": {
+        "accuracy": 0.931,
+        "macro_f1": 0.9308366022714059,
+        "recall": [
+          0.9580838323353293,
+          0.9820359281437125,
+          0.9700598802395209,
+          0.9041916167664671,
+          0.7831325301204819,
+          0.9879518072289156
+        ]
+      },
+      "int8": {
+        "accuracy": 0.938,
+        "macro_f1": 0.9372698394539376,
+        "recall": [
+          0.9580838323353293,
+          1.0,
+          0.9700598802395209,
+          0.9461077844311377,
+          0.7710843373493976,
+          0.9819277108433735
+        ]
+      },
+      "fp16": {
+        "accuracy": 0.929,
+        "macro_f1": 0.928886506296814,
+        "recall": [
+          0.9580838323353293,
+          0.9700598802395209,
+          0.9700598802395209,
+          0.9041916167664671,
+          0.7831325301204819,
+          0.9879518072289156
+        ]
+      }
+    },
+    "top1_agreement": {
+      "pytorch_vs_fp32": 1.0,
+      "pytorch_vs_int8": 0.979,
+      "fp32_vs_int8": 0.979,
+      "pytorch_vs_fp16": 0.998,
+      "fp32_vs_fp16": 0.998
+    }
+  },
+  "test": {
+    "macro_f1": null,
+    "accuracy": null,
+    "note": "Not evaluated before Week 11."
+  },
+  "sizes_bytes": {
+    "pytorch": 270895,
+    "fp32": 269544,
+    "int8": 283424,
+    "fp16": 141000
+  },
+  "fallback": null,
+  "stamp": {
+    "checkpoint_commit": "3b0b57ef9a22b5b00c00777b7256c17ba4dcb595",
+    "cache_id": "4ecddb8cb8697e2d",
+    "prepared_at_commit": "f161f9584584234ecdad1ea41d713cb302feb487+dirty"
+  }
+}
