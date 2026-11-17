@@ -8,6 +8,8 @@ import com.radarsense.app.data.net.ServerMessage
 import com.radarsense.app.data.net.StartRequest
 import com.radarsense.app.data.net.StreamEvent
 import com.radarsense.app.data.net.StreamProtocol
+import com.radarsense.app.domain.ActionDispatcher
+import com.radarsense.app.domain.ActionState
 import com.radarsense.app.domain.Frame
 import com.radarsense.app.domain.FrameBuffer
 import com.radarsense.app.domain.GestureClassifier
@@ -19,14 +21,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.retryWhen
@@ -90,9 +96,30 @@ class StreamViewModel(
     private val clock: () -> Long = System::nanoTime,
     private val ingestDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val inferenceDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    /** Turns fired gestures into slide, play and light changes. Touched only on the main thread. */
+    private val actionDispatcher: ActionDispatcher = ActionDispatcher(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(StreamUiState())
     val state: StateFlow<StreamUiState> = _state.asStateFlow()
+
+    // Every fired gesture is sent here as its own event (the class index), so two fires of the same gesture in a
+    // row are two events. The buffer is large so that a slow collector does not lose events.
+    private val _fires = MutableSharedFlow<Int>(extraBufferCapacity = 64)
+    val fires: SharedFlow<Int> = _fires.asSharedFlow()
+
+    private val _actions = MutableStateFlow(actionDispatcher.state)
+    /** The state of the Actions screen. It lives here, so it survives switching screens and the stream keeps running. */
+    val actions: StateFlow<ActionState> = _actions.asStateFlow()
+
+    init {
+        // UNDISPATCHED: the collector is subscribed before the constructor returns, so no fire can be missed.
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            fires.collect { classIndex ->
+                actionDispatcher.dispatch(classIndex)
+                _actions.value = actionDispatcher.state
+            }
+        }
+    }
 
     private val _latestFrame = MutableStateFlow<Frame?>(null)
     val latestFrame: StateFlow<Frame?> = _latestFrame.asStateFlow()
@@ -269,6 +296,9 @@ class StreamViewModel(
 
                 val firedClass = detector.onPrediction(prediction.classIndex, prediction.confidence, now)
                 val latencyMs = if (firedClass != null) (clock() - receivedAt) / 1e6 else null
+                // Sent before the state is updated, so a reader that sees the new fire count can rely on the event
+                // having been delivered. tryEmit cannot fail with a 64-event buffer unless the collector is stuck.
+                if (firedClass != null) _fires.tryEmit(firedClass)
                 _state.update {
                     it.copy(
                         prediction = ModelClasses.name(prediction.classIndex),
