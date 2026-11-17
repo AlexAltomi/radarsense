@@ -6,12 +6,16 @@ import com.radarsense.app.data.net.StreamEvent
 import com.radarsense.app.domain.Frame
 import com.radarsense.app.domain.GestureClassifier
 import com.radarsense.app.domain.Prediction
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -277,6 +281,36 @@ class StreamViewModelTest {
         sendWindow(baseNanos + 900_000_000L)
         assertEquals(2, state.fireCount)
         assertEquals("label2", state.fired)
+    }
+
+    @Test
+    fun aFiredGestureReachesTheDispatcherOnceEvenWhenTheSameGestureFiresTwiceInARow() {
+        val nextSlide = 3 // "label3" = next slide in the default table
+        startWith(
+            prediction(nextSlide), prediction(nextSlide), // fires
+            prediction(none), // after the cooldown: re-arms
+            prediction(nextSlide), prediction(nextSlide), // fires again, the same gesture
+        )
+        val events = CopyOnWriteArrayList<Int>()
+        val collector = CoroutineScope(Dispatchers.Unconfined).launch(start = CoroutineStart.UNDISPATCHED) {
+            vm.fires.collect { events.add(it) }
+        }
+        try {
+            assertEquals(1, vm.actions.value.slide)
+            sendWindow(baseNanos)
+            sendWindow(baseNanos) // first fire
+            assertEquals("one fire moves the deck by one slide, not two", 2, vm.actions.value.slide)
+            assertEquals(listOf(nextSlide), events.toList())
+
+            sendWindow(baseNanos + 700_000_000L)
+            sendWindow(baseNanos + 800_000_000L)
+            sendWindow(baseNanos + 900_000_000L) // second fire of the same gesture
+            assertEquals(2, state.fireCount)
+            assertEquals("the second fire is a separate event", listOf(nextSlide, nextSlide), events.toList())
+            assertEquals(3, vm.actions.value.slide)
+        } finally {
+            collector.cancel()
+        }
     }
 
     @Test

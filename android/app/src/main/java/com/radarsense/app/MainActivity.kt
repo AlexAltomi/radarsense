@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.radarsense.app.data.ml.LiteRtGestureClassifier
+import com.radarsense.app.ui.actions.ActionsScreen
 import com.radarsense.app.ui.stream.ConnectScreen
 import com.radarsense.app.ui.stream.LiveScreen
 import com.radarsense.app.ui.stream.StreamViewModel
@@ -51,13 +52,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen(val title: String) { Connect("Connect"), Live("Live") }
+private enum class Screen(val title: String) { Connect("Connect"), Live("Live"), Actions("Actions") }
 
-/** Two screens for Week 5. Navigation Compose comes with History and Settings in Week 7. */
+/** Three screens. Navigation Compose comes with History and Settings in Week 7. */
 @Composable
 private fun RadarSenseApp(viewModel: StreamViewModel) {
     var screen by rememberSaveable { mutableStateOf(Screen.Connect) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val actions by viewModel.actions.collectAsStateWithLifecycle()
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Column(Modifier.padding(innerPadding)) {
@@ -83,6 +85,7 @@ private fun RadarSenseApp(viewModel: StreamViewModel) {
                     onStop = viewModel::stop,
                 )
                 Screen.Live -> LiveScreen(state = state, frames = viewModel.latestFrame)
+                Screen.Actions -> ActionsScreen(state = actions)
             }
         }
     }
