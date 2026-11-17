@@ -144,7 +144,8 @@ verified.
     The connection stays open, and a running stream keeps running.
 - Detector: inference runs every 4 frames. A gesture is accepted when the last 2 predictions agree and the
   confidence is at least 0.8. After an accepted gesture there is a cooldown of 600 ms, and the detector re-arms
-  after one "no gesture" prediction. Inference never runs on the Android main thread.
+  after one "no gesture" prediction. When the frame buffer is cleared, the detector forgets its last prediction and
+  re-arms; the cooldown still applies. Inference never runs on the Android main thread.
 
 ## Cache format
 

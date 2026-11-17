@@ -32,6 +32,9 @@ fun LiveScreen(
         Heatmap(frames, Modifier.fillMaxWidth())
         Text("Doppler across, range up (near at the bottom). Channel 0 only.", style = MaterialTheme.typography.bodySmall)
         Text("Expected: ${state.expected}", style = MaterialTheme.typography.headlineMedium)
+        Text("Prediction: ${state.prediction} (${"%.0f".format(state.confidence * 100)}%)")
+        Text("Fired: ${state.fired}" + (state.latencyMs?.let { " · %.0f ms".format(it) } ?: ""))
+        Text("${state.windowsClassified} windows classified · ${state.droppedWindows} dropped (classifier busy)")
         Text("Status: ${statusText(state.status)}")
         Text("%.1f fps · %d frames · %d buffer resets after lost frames".format(
             state.fps, state.framesReceived, state.lostFrameResets,

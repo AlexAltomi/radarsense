@@ -39,6 +39,7 @@ android {
 dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation(libs.litert)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.activity.ktx)
@@ -51,6 +52,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     testImplementation(libs.junit)
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     // Android's own org.json is only a stub in JVM unit tests; this puts the real one first on the test classpath.
     testImplementation(libs.org.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))

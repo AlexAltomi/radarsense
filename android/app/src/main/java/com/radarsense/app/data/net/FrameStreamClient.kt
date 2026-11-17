@@ -36,9 +36,9 @@ sealed interface StreamEvent {
  *
  * Frames are parsed on OkHttp's reader thread and the flow runs on Dispatchers.IO, never on the main thread.
  */
-class FrameStreamClient(private val http: OkHttpClient = defaultHttpClient()) {
+class FrameStreamClient(private val http: OkHttpClient = defaultHttpClient()) : FrameSource {
 
-    fun stream(url: String, start: StartRequest): Flow<StreamEvent> = callbackFlow {
+    override fun stream(url: String, start: StartRequest): Flow<StreamEvent> = callbackFlow {
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 webSocket.send(StreamProtocol.startMessage(start))

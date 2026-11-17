@@ -9,6 +9,12 @@ activityCompose = "1.8.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
 orgJson = "20240303"
+# LiteRT 1.4.2 with the Interpreter API, on purpose. 2.2.0 (CompiledModel) fails to build because two of its
+# libraries share one namespace, and 2.3.x needs Kotlin 2.4 while this project is on 2.2.10.
+# Look at this again only if Kotlin is upgraded.
+# Before submission: test the release build with R8 on (LiteRT may need keep rules), and tune the inference
+# thread count (now 2) on a real phone.
+litert = "1.4.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -19,6 +25,7 @@ androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecyc
 androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityCompose" }
 androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycleRuntimeKtx" }
+litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
