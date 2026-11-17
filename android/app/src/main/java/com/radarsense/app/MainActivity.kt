@@ -22,13 +22,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.radarsense.app.data.ml.LiteRtGestureClassifier
 import com.radarsense.app.ui.stream.ConnectScreen
 import com.radarsense.app.ui.stream.LiveScreen
 import com.radarsense.app.ui.stream.StreamViewModel
 import com.radarsense.app.ui.theme.RadarSenseTheme
 
 class MainActivity : ComponentActivity() {
-    private val streamViewModel: StreamViewModel by viewModels()
+    private val streamViewModel: StreamViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                // The model is loaded later, on the inference thread, when a stream starts.
+                StreamViewModel(classifierProvider = { LiteRtGestureClassifier.fromAssets(applicationContext) })
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
